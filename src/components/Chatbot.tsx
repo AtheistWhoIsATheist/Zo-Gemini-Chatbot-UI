@@ -1,16 +1,21 @@
 import { useState, useRef, useEffect } from 'react';
-import { GoogleGenAI, GenerateContentResponse } from '@google/genai';
+import { GoogleGenAI, GenerateContentResponse, ThinkingLevel } from '@google/genai';
 import Markdown from 'react-markdown';
-import { Send, Loader2, Terminal, User } from 'lucide-react';
+import { Send, Loader2, ChevronRight, Search, Pin, Download, Settings, ChevronLeft } from 'lucide-react';
 import { corpusNodes } from '../data/corpus';
 import { cn } from '../lib/utils';
+import { motion } from 'motion/react';
 
 interface Message {
   role: 'user' | 'model';
   text: string;
 }
 
-export function Chatbot() {
+interface ChatbotProps {
+  onCollapse: () => void;
+}
+
+export function Chatbot({ onCollapse }: ChatbotProps) {
   const [messages, setMessages] = useState<Message[]>([
     { role: 'model', text: 'I am PEM_ARCHITECT_PRIME. The Oracle of the Nihiltheism Corpus. Ask your question.' }
   ]);
@@ -57,6 +62,9 @@ ${corpusContext}
       config: {
         systemInstruction,
         temperature: 0.3,
+        thinkingConfig: {
+          thinkingLevel: ThinkingLevel.HIGH
+        }
       }
     });
     
@@ -101,67 +109,89 @@ ${corpusContext}
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#0a0a0a] border-l border-zinc-800 font-mono">
-      <div className="p-4 border-b border-zinc-800 flex items-center gap-3 bg-[#050505]">
-        <Terminal className="w-5 h-5 text-orange-500" />
-        <div>
-          <h2 className="text-sm font-bold text-zinc-100 tracking-widest">PEM_ARCHITECT_PRIME</h2>
-          <p className="text-[10px] text-zinc-500 uppercase">Gemini 3.1 Pro Preview</p>
+    <div className="flex flex-col h-full bg-transparent font-sans relative">
+      {/* Collapse Toggle */}
+      <motion.button 
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.9 }}
+        onClick={onCollapse}
+        className="absolute -left-3 top-8 w-6 h-6 rounded-full glass-card flex items-center justify-center text-orange-500/60 hover:text-orange-500 transition-colors z-40 border-white/[0.1] shadow-[0_0_10px_rgba(200,106,42,0.2)]"
+      >
+        <ChevronRight className="w-3 h-3" strokeWidth={3} />
+      </motion.button>
+
+      {/* Header */}
+      <div className="px-8 py-6 border-b border-white/[0.04] flex items-center justify-between bg-white/[0.01]">
+        <div className="flex items-center gap-3">
+          <ChevronRight className="w-4 h-4 text-orange-500/80" strokeWidth={3} />
+          <div>
+            <h2 className="text-[13px] font-semibold text-zinc-200 tracking-widest uppercase">PEM_ARCHITECT_PRIME</h2>
+            <p className="text-[9px] text-zinc-500 uppercase tracking-widest mt-0.5 font-mono">Gemini 3.1 Pro Preview</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-4 text-zinc-500">
+          <Search className="w-4 h-4 hover:text-zinc-300 cursor-pointer transition-colors" />
+          <Pin className="w-4 h-4 hover:text-zinc-300 cursor-pointer transition-colors" />
+          <Download className="w-4 h-4 hover:text-zinc-300 cursor-pointer transition-colors" />
+          <Settings className="w-4 h-4 hover:text-orange-500 cursor-pointer transition-colors" />
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
+      {/* Messages Area */}
+      <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
         {messages.map((msg, i) => (
-          <div key={i} className={cn("flex gap-3", msg.role === 'user' ? "flex-row-reverse" : "")}>
+          <div key={i} className={cn("flex w-full", msg.role === 'user' ? "justify-end" : "justify-start")}>
             <div className={cn(
-              "w-8 h-8 rounded-full flex items-center justify-center shrink-0",
-              msg.role === 'user' ? "bg-zinc-800 text-zinc-400" : "bg-orange-900/30 text-orange-500 border border-orange-900/50"
-            )}>
-              {msg.role === 'user' ? <User className="w-4 h-4" /> : <Terminal className="w-4 h-4" />}
-            </div>
-            <div className={cn(
-              "max-w-[80%] rounded-lg p-3 text-sm",
+              "max-w-[85%] glass-card rounded-3xl p-6 text-[13px] leading-relaxed",
               msg.role === 'user' 
-                ? "bg-zinc-800 text-zinc-200" 
-                : "bg-transparent text-zinc-300 border border-zinc-800/50"
+                ? "bg-white/[0.04] text-zinc-300 border-white/[0.08]" 
+                : "bg-[#0a0a0c]/40 text-zinc-400 border-white/[0.03]"
             )}>
-              <div className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-zinc-900 prose-pre:border prose-pre:border-zinc-800">
+              <div className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-[#050505]/50 prose-pre:border prose-pre:border-white/[0.05] font-sans">
                 <Markdown>{msg.text}</Markdown>
               </div>
             </div>
           </div>
         ))}
         {isLoading && (
-          <div className="flex gap-3">
-            <div className="w-8 h-8 rounded-full bg-orange-900/30 text-orange-500 border border-orange-900/50 flex items-center justify-center shrink-0">
-              <Loader2 className="w-4 h-4 animate-spin" />
-            </div>
-            <div className="flex items-center text-xs text-zinc-500 uppercase tracking-widest">
-              Synthesizing...
+          <div className="flex w-full justify-start">
+            <div className="max-w-[85%] glass-card rounded-3xl p-6 bg-[#0a0a0c]/40 border-white/[0.03] flex items-center gap-3">
+              <Loader2 className="w-4 h-4 animate-spin text-orange-500/50" />
+              <span className="text-[11px] text-zinc-500 uppercase tracking-widest font-mono">Synthesizing...</span>
             </div>
           </div>
         )}
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="p-4 bg-[#050505] border-t border-zinc-800">
-        <div className="relative flex items-center">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-            placeholder="Query the corpus..."
-            className="w-full bg-zinc-900 border border-zinc-800 rounded-md py-3 pl-4 pr-12 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-orange-500/50 transition-all"
-            disabled={isLoading}
-          />
-          <button
-            onClick={handleSend}
-            disabled={!input.trim() || isLoading}
-            className="absolute right-2 p-2 text-zinc-500 hover:text-orange-500 disabled:opacity-50 disabled:hover:text-zinc-500 transition-colors cursor-pointer"
-          >
-            <Send className="w-4 h-4" />
-          </button>
+      {/* Input Area */}
+      <div className="p-8 pt-4 bg-transparent">
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between px-2">
+            <span className="text-[9px] uppercase tracking-widest text-zinc-600 font-mono">Enter to send • Shift+Enter for newline</span>
+            <div className="flex items-center gap-1.5 glass-chip px-2.5 py-1 rounded-full border-white/[0.05] shadow-[0_2px_10px_rgba(0,0,0,0.3)]">
+              <div className="w-1 h-1 bg-orange-500 rounded-full shadow-[0_0_5px_rgba(249,115,22,0.5)]"></div>
+              <span className="text-[8px] uppercase tracking-widest text-zinc-400 font-mono">Context: Nihiltheism Corpus</span>
+            </div>
+          </div>
+          <div className="relative flex items-center">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+              placeholder="Query the corpus..."
+              className="w-full glass-card rounded-full py-4 pl-7 pr-16 text-[13px] text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-orange-500/30 transition-all font-sans shadow-[inset_0_2px_10px_rgba(0,0,0,0.5)]"
+              disabled={isLoading}
+            />
+            <button
+              onClick={handleSend}
+              disabled={!input.trim() || isLoading}
+              className="absolute right-3 w-11 h-11 rounded-full flex items-center justify-center text-zinc-500 hover:text-orange-400 hover:bg-white/[0.05] disabled:opacity-50 disabled:hover:text-zinc-500 disabled:hover:bg-transparent transition-all cursor-pointer"
+            >
+              <Send className="w-4 h-4" strokeWidth={1.5} />
+            </button>
+          </div>
         </div>
       </div>
     </div>
