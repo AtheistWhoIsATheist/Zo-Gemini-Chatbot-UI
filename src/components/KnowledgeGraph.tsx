@@ -3,11 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { corpusNodes, corpusLinks, Node } from '../data/corpus';
 import { cn } from '../lib/utils';
-import { Hand, Maximize, RotateCcw, ZoomIn } from 'lucide-react';
+import { Hand, Maximize, RotateCcw, ZoomIn, ShieldAlert, CheckCircle2, HelpCircle } from 'lucide-react';
+import { useGraphLayout } from '../hooks/useGraphLayout';
 
 interface KnowledgeGraphProps {
   onNodeSelect: (node: Node) => void;
@@ -22,6 +23,16 @@ export function KnowledgeGraph({ onNodeSelect, selectedNodeId }: KnowledgeGraphP
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set());
+  const [groupBy, setGroupBy] = useState<'type' | 'status' | 'none'>('none');
+  const [expandedNodeId, setExpandedNodeId] = useState<string | null>(null);
+
+  const filteredNodes = useMemo(() => {
+    if (activeFilters.size === 0) return corpusNodes;
+    return corpusNodes.filter(node => activeFilters.has(node.type));
+  }, [activeFilters]);
+
+  const { nodePositions } = useGraphLayout({ nodes: filteredNodes, links: corpusLinks, depth, groupBy });
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -38,7 +49,7 @@ export function KnowledgeGraph({ onNodeSelect, selectedNodeId }: KnowledgeGraphP
   }, []);
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (e.button === 0) { // Left click
+    if (e.button === 0) {
       setIsPanning(true);
     }
   };
@@ -58,12 +69,10 @@ export function KnowledgeGraph({ onNodeSelect, selectedNodeId }: KnowledgeGraphP
 
   const handleWheel = (e: React.WheelEvent) => {
     if (e.ctrlKey || e.metaKey) {
-      // Zoom
       const zoomSpeed = 0.001;
       const newScale = Math.max(0.5, Math.min(3, scale - e.deltaY * zoomSpeed));
       setScale(newScale);
     } else {
-      // Depth or Pan
       const depthSpeed = 0.001;
       setDepth(prev => Math.max(0.5, Math.min(2.5, prev - e.deltaY * depthSpeed)));
     }
@@ -75,41 +84,49 @@ export function KnowledgeGraph({ onNodeSelect, selectedNodeId }: KnowledgeGraphP
     setDepth(1.2);
   };
 
-  // Elliptical layout calculation
-  const centerX = (dimensions.width / 2) + offset.x;
-  const centerY = (dimensions.height / 2) + offset.y;
-  const radiusX = (dimensions.width / 2) * 0.65 * depth * scale;
-  const radiusY = (dimensions.height / 2) * 0.65 * depth * scale;
-
-  const nodePositions = corpusNodes.map((node, index) => {
-    const angle = (index / corpusNodes.length) * 2 * Math.PI;
-    return {
-      ...node,
-      x: centerX + radiusX * Math.cos(angle),
-      y: centerY + radiusY * Math.sin(angle),
-    };
-  });
-
   const highlightedNodes = ['spiritual_emergency', 'void', 'collapse', 'anpes', 'ethics'];
   
-  const getNodeStyle = (id: string, isSelected: boolean, isHovered: boolean) => {
-    if (highlightedNodes.includes(id)) {
-      return cn(
-        "bg-orange-500/5 border border-orange-500/40 text-orange-400 backdrop-blur-xl shadow-[inset_0_0_20px_rgba(200,106,42,0.1)]",
-        (isSelected || isHovered) && "ring-1 ring-orange-400 ring-offset-2 ring-offset-[#030303] bg-orange-500/10"
-      );
-    }
-    return cn(
-      "bg-zinc-900/20 border border-zinc-800/40 border-dotted text-zinc-500 backdrop-blur-md shadow-[inset_0_0_10px_rgba(0,0,0,0.3)]",
-      (isSelected || isHovered) && "ring-1 ring-zinc-500 ring-offset-2 ring-offset-[#030303] text-zinc-300 border-solid bg-zinc-800/40"
+  const getNodeStyle = (node: Node, isSelected: boolean, isHovered: boolean) => {
+    const base = "transition-all duration-300 cursor-pointer tracking-widest uppercase z-20 font-mono text-[10px] whitespace-nowrap px-6 py-2.5";
+    
+    let shape = "rounded-full";
+    const geometry = node.metadata?.geometry || (
+      node.type === 'library_item' ? 'square' :
+      node.type === 'summary' ? 'hex' :
+      node.type === 'question' ? 'diamond' : 'circle'
     );
+
+    if (geometry === 'square') shape = "rounded-lg";
+    if (geometry === 'diamond') shape = "rounded-none rotate-45";
+    if (geometry === 'hex') shape = "rounded-xl";
+    if (geometry === 'octagon') shape = "rounded-2xl";
+
+    let color = "neo-convex text-zinc-500";
+    if (isSelected || isHovered) {
+      color = "neo-pressed text-orange-400 ring-1 ring-orange-500/30 neo-frosted";
+    } else if (highlightedNodes.includes(node.id) || node.metadata?.chromatic_tag) {
+      color = "neo-convex text-orange-500/80 neo-frosted";
+    } else {
+      color = "neo-dim";
+    }
+
+    return cn(base, shape, color);
+  };
+
+  const getStatusIcon = (status?: string) => {
+    switch (status) {
+      case 'VERIFIED': return <CheckCircle2 className="w-3 h-3 text-emerald-500/70" />;
+      case 'INFERENCE': return <HelpCircle className="w-3 h-3 text-amber-500/70" />;
+      case 'HYPOTHESIS': return <ShieldAlert className="w-3 h-3 text-orange-500/70" />;
+      default: return null;
+    }
   };
 
   return (
     <div 
       ref={containerRef} 
       className={cn(
-        "relative w-full h-full overflow-hidden bg-transparent transition-all duration-300",
+        "relative w-full h-full overflow-hidden neo-bg transition-all duration-300",
         isPanning ? "cursor-grabbing" : "cursor-default"
       )}
       onMouseDown={handleMouseDown}
@@ -118,21 +135,55 @@ export function KnowledgeGraph({ onNodeSelect, selectedNodeId }: KnowledgeGraphP
       onMouseLeave={handleMouseUp}
       onWheel={handleWheel}
     >
-      {/* Parallax Background Layer */}
+      {/* Parallax Background */}
       <motion.div 
         animate={{ 
-          scale: (1 + (depth - 1) * 0.15) * scale,
-          opacity: 0.25 + (depth - 1) * 0.05,
-          x: ((depth - 1) * 20) + (offset.x * 0.2),
-          y: ((depth - 1) * 20) + (offset.y * 0.2)
+          x: offset.x * 0.1 * depth,
+          y: offset.y * 0.1 * depth,
+          scale: 1 + (depth - 1.2) * 0.2
         }}
-        transition={{ duration: 0.8, ease: "easeOut" }}
-        className="absolute inset-0 cosmic-void pointer-events-none z-0"
+        className="absolute inset-[-50%] parallax-bg pointer-events-none opacity-40 z-0"
       />
 
-      {/* Graph Controls Micro-toolbar */}
+      {/* Graph Controls Micro-toolbar (Left) */}
+      <div className="absolute top-6 left-6 z-50 flex flex-col items-start gap-2">
+        <div className="neo-flat-sm flex items-center gap-4 px-3 py-2 rounded-lg">
+          <span className="text-[9px] uppercase tracking-widest text-zinc-500">Group By:</span>
+          <select 
+            className="bg-transparent text-[9px] uppercase tracking-widest text-zinc-300 outline-none cursor-pointer"
+            value={groupBy}
+            onChange={(e) => setGroupBy(e.target.value as any)}
+          >
+            <option value="none" className="bg-zinc-900">None</option>
+            <option value="type" className="bg-zinc-900">Type</option>
+            <option value="status" className="bg-zinc-900">Status</option>
+          </select>
+        </div>
+        <div className="neo-flat-sm flex flex-wrap items-center gap-2 px-3 py-2 rounded-lg max-w-[300px]">
+          <span className="text-[9px] uppercase tracking-widest text-zinc-500 w-full mb-1">Filter by Type:</span>
+          {Array.from(new Set(corpusNodes.map(n => n.type))).map(type => (
+            <button
+              key={type}
+              onClick={() => {
+                const newFilters = new Set(activeFilters);
+                if (newFilters.has(type)) newFilters.delete(type);
+                else newFilters.add(type);
+                setActiveFilters(newFilters);
+              }}
+              className={cn(
+                "text-[8px] uppercase tracking-widest px-2 py-1 rounded-full transition-colors",
+                activeFilters.has(type) ? "bg-orange-500/20 text-orange-400 border border-orange-500/30" : "bg-white/5 text-zinc-500 hover:text-zinc-300 border border-transparent"
+              )}
+            >
+              {type}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Graph Controls Micro-toolbar (Right) */}
       <div className="absolute top-6 right-6 z-50 flex flex-col items-end gap-2">
-        <div className="glass-chip flex items-center gap-4 px-3 py-2">
+        <div className="neo-flat-sm flex items-center gap-4 px-3 py-2 rounded-lg">
           <div className="flex items-center gap-1.5 group cursor-pointer" onClick={() => setIsPanning(!isPanning)}>
             <Hand className={cn("w-3 h-3 transition-colors", isPanning ? "text-orange-400" : "text-zinc-500 group-hover:text-zinc-300")} />
             <span className="text-[9px] uppercase tracking-widest text-zinc-500 group-hover:text-zinc-300">Pan</span>
@@ -149,12 +200,14 @@ export function KnowledgeGraph({ onNodeSelect, selectedNodeId }: KnowledgeGraphP
             <Maximize className="w-3 h-3 text-zinc-500 group-hover:text-zinc-300" />
             <span className="text-[9px] uppercase tracking-widest text-zinc-500 group-hover:text-zinc-300">Fit</span>
           </div>
-          <div className="w-[1px] h-3 bg-white/10 mx-1"></div>
+          <div className="w-[1px] h-3 bg-white/5 mx-1"></div>
           <div className="flex items-center gap-1">
             <span className="text-[9px] font-mono text-zinc-500">z:</span>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 relative">
               <span className="text-[9px] font-mono text-zinc-400">{depth.toFixed(1)}</span>
-              <div className="w-1 h-1 bg-orange-500 rounded-full shadow-[0_0_5px_rgba(249,115,22,0.8)]"></div>
+              <div className="w-1 h-3 bg-zinc-800/50 rounded-full flex items-center justify-center">
+                <div className="w-[1px] h-2 bg-orange-500 shadow-[0_0_5px_rgba(249,115,22,0.8)]"></div>
+              </div>
             </div>
           </div>
         </div>
@@ -173,86 +226,198 @@ export function KnowledgeGraph({ onNodeSelect, selectedNodeId }: KnowledgeGraphP
         </div>
       </div>
 
-      <svg className="absolute inset-0 w-full h-full pointer-events-none z-10">
-        {corpusLinks.map((link, i) => {
-          const sourceNode = nodePositions.find(n => n.id === link.source);
-          const targetNode = nodePositions.find(n => n.id === link.target);
-          if (!sourceNode || !targetNode) return null;
-          
-          const isHighlighted = selectedNodeId === link.source || selectedNodeId === link.target || hoveredNodeId === link.source || hoveredNodeId === link.target;
-          
-          return (
-            <g key={i}>
-              <line
-                x1={sourceNode.x}
-                y1={sourceNode.y}
-                x2={targetNode.x}
-                y2={targetNode.y}
-                stroke={isHighlighted ? "rgba(200,106,42,0.3)" : "rgba(255,255,255,0.08)"}
-                className="hairline transition-colors duration-300"
-              />
-              {isHighlighted && link.label && (
-                <text
-                  x={(sourceNode.x + targetNode.x) / 2}
-                  y={(sourceNode.y + targetNode.y) / 2}
-                  fill="rgba(255,255,255,0.25)"
-                  fontSize="8"
-                  textAnchor="middle"
-                  className="font-mono tracking-[0.2em] uppercase"
-                >
-                  {link.label}
-                </text>
-              )}
-            </g>
-          );
-        })}
-      </svg>
+      {/* Centered Origin Wrapper */}
+      <div className="absolute top-1/2 left-1/2 w-0 h-0">
+        <div 
+          className="absolute inset-0 overflow-visible"
+          style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})` }}
+        >
+          <svg className="overflow-visible absolute inset-0 pointer-events-none z-10">
+            {corpusLinks.map((link, i) => {
+              const sourceNode = nodePositions.find(n => n.id === link.source);
+              const targetNode = nodePositions.find(n => n.id === link.target);
+              if (!sourceNode || !targetNode) return null;
+              
+              const isHighlighted = selectedNodeId === link.source || selectedNodeId === link.target || hoveredNodeId === link.source || hoveredNodeId === link.target;
+              
+              // Calculate absolute pixel positions based on percentages and current dimensions
+              const sourceX = (sourceNode.pctX / 100) * dimensions.width;
+              const sourceY = (sourceNode.pctY / 100) * dimensions.height;
+              const targetX = (targetNode.pctX / 100) * dimensions.width;
+              const targetY = (targetNode.pctY / 100) * dimensions.height;
 
-      {nodePositions.map((node) => {
-        const isSelected = selectedNodeId === node.id;
-        const isHovered = hoveredNodeId === node.id;
-        return (
-          <div key={node.id} className="absolute" style={{ left: node.x, top: node.y }}>
-            <motion.button
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ 
-                opacity: 1, 
-                scale: isSelected || isHovered ? 1.1 : 1,
-              }}
-              transition={{ duration: 0.3, ease: [0.23, 1, 0.32, 1] }}
-              onClick={(e) => {
-                e.stopPropagation();
-                onNodeSelect(node);
-              }}
-              onMouseEnter={() => setHoveredNodeId(node.id)}
-              onMouseLeave={() => setHoveredNodeId(null)}
-              className={cn(
-                "transform -translate-x-1/2 -translate-y-1/2 px-6 py-2.5 rounded-full text-[10px] font-mono whitespace-nowrap transition-all duration-300 cursor-pointer tracking-widest uppercase z-20",
-                getNodeStyle(node.id, isSelected, isHovered),
-                (isSelected || isHovered) && "z-30"
-              )}
-            >
-              {node.label}
-            </motion.button>
+              // Calculate control point for quadratic bezier curve
+              const midX = (sourceX + targetX) / 2;
+              const midY = (sourceY + targetY) / 2;
+              
+              const dx = targetX - sourceX;
+              const dy = targetY - sourceY;
+              const dist = Math.sqrt(dx * dx + dy * dy);
+              const curveOffset = dist * 0.15; // 15% of distance
+              
+              // Normal vector
+              const nx = -dy / dist;
+              const ny = dx / dist;
+              
+              // Alternate curve direction based on index
+              const dir = i % 2 === 0 ? 1 : -1;
+              
+              const cx = midX + nx * curveOffset * dir;
+              const cy = midY + ny * curveOffset * dir;
 
-            {/* Tooltip */}
-            <AnimatePresence>
-              {isHovered && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 10 }}
-                  className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 px-3 py-1.5 glass-card rounded-lg text-[10px] whitespace-nowrap text-zinc-300 z-50 pointer-events-none"
-                >
-                  <span className="text-orange-500/80 mr-2">●</span>
-                  {node.label}
-                  <div className="text-[8px] text-zinc-500 mt-0.5 uppercase tracking-tighter">{node.type}</div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        );
-      })}
+              const pathData = `M ${sourceX} ${sourceY} Q ${cx} ${cy} ${targetX} ${targetY}`;
+
+              return (
+                <g key={i}>
+                  <motion.path
+                    animate={{ d: pathData }}
+                    transition={{ type: "spring", damping: 30, stiffness: 200, mass: 0.8 }}
+                    fill="none"
+                    stroke={isHighlighted ? "rgba(200,106,42,0.4)" : "rgba(255,255,255,0.05)"}
+                    strokeWidth={isHighlighted ? 2 : (link.type === 'explores' ? 1.5 : 1)}
+                    className="transition-colors duration-300"
+                  />
+                  {isHighlighted && link.label && (
+                    <motion.text
+                      animate={{ x: cx, y: cy }}
+                      transition={{ type: "spring", damping: 30, stiffness: 200, mass: 0.8 }}
+                      fill="rgba(255,255,255,0.4)"
+                      fontSize="8"
+                      textAnchor="middle"
+                      className="font-mono tracking-[0.2em] uppercase neo-text"
+                    >
+                      {link.label}
+                    </motion.text>
+                  )}
+                </g>
+              );
+            })}
+          </svg>
+
+          {nodePositions.map((node) => {
+            const isSelected = selectedNodeId === node.id;
+            const isHovered = hoveredNodeId === node.id;
+            
+            // Calculate absolute pixel positions based on percentages and current dimensions
+            const nodeX = (node.pctX / 100) * dimensions.width;
+            const nodeY = (node.pctY / 100) * dimensions.height;
+
+            return (
+              <motion.div 
+                key={node.id} 
+                className="absolute z-20"
+                animate={{ x: nodeX, y: nodeY }}
+                transition={{ type: "spring", damping: 30, stiffness: 200, mass: 0.8 }}
+              >
+                <div className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center">
+                  {/* Tooltip */}
+                  <AnimatePresence>
+                    {isHovered && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 10 }}
+                        className="absolute bottom-full mb-2 px-4 py-3 neo-flat rounded-xl text-[10px] whitespace-nowrap text-zinc-300 z-50 pointer-events-none min-w-[180px]"
+                      >
+                        <div className="flex items-center justify-between mb-2 pb-1 border-b border-white/5">
+                          <span className="text-orange-500/80 uppercase tracking-widest font-bold">{node.type}</span>
+                          <div className="flex items-center gap-1.5">
+                            {getStatusIcon(node.status)}
+                            <span className="text-[8px] text-zinc-500 uppercase">{node.status}</span>
+                          </div>
+                        </div>
+                        
+                        <div className="text-zinc-100 font-medium mb-1">{node.label}</div>
+                        
+                        {node.confidence !== undefined && (
+                          <div className="flex items-center gap-2 mt-2">
+                            <div className="flex-1 h-1 bg-zinc-800 rounded-full overflow-hidden">
+                              <div 
+                                className="h-full bg-orange-500/60" 
+                                style={{ width: `${node.confidence * 100}%` }}
+                              />
+                            </div>
+                            <span className="text-[8px] text-zinc-500 font-mono">{(node.confidence * 100).toFixed(0)}% CONF</span>
+                          </div>
+                        )}
+                        
+                        {node.evidence_quote_ids && node.evidence_quote_ids.length > 0 && (
+                          <div className="text-[8px] text-zinc-500 mt-2 uppercase tracking-tighter">
+                            PROVENANCE: {node.evidence_quote_ids.length} QUOTES
+                          </div>
+                        )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  <motion.button
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ 
+                      opacity: 1, 
+                      scale: isSelected || isHovered || expandedNodeId === node.id ? 1.1 : 1,
+                    }}
+                    transition={{ duration: 0.3, ease: [0.23, 1, 0.32, 1] }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onNodeSelect(node);
+                    }}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      setExpandedNodeId(expandedNodeId === node.id ? null : node.id);
+                    }}
+                    onMouseEnter={() => setHoveredNodeId(node.id)}
+                    onMouseLeave={() => setHoveredNodeId(null)}
+                    className={cn(
+                      getNodeStyle(node, isSelected, isHovered),
+                      (isSelected || isHovered || expandedNodeId === node.id) && "z-30"
+                    )}
+                  >
+                    <span className={cn(node.metadata?.geometry === 'diamond' && "-rotate-45 block")}>
+                      {node.label}
+                    </span>
+                  </motion.button>
+
+                  {/* Expanded Node Panel */}
+                  <AnimatePresence>
+                    {expandedNodeId === node.id && (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.8, y: 20 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.8, y: 20 }}
+                        className="absolute top-full mt-4 w-72 neo-flat rounded-xl p-4 z-50 pointer-events-auto shadow-2xl border border-white/10"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex items-center justify-between mb-3 pb-2 border-b border-white/5">
+                          <span className="text-xs text-orange-500/80 font-mono uppercase tracking-widest">{node.type}</span>
+                          <button 
+                            onClick={() => setExpandedNodeId(null)}
+                            className="text-zinc-500 hover:text-zinc-300 transition-colors"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                          </button>
+                        </div>
+                        <div className="text-sm text-zinc-100 font-medium mb-3">{node.label}</div>
+                        <div className="text-xs text-zinc-400 leading-relaxed max-h-48 overflow-y-auto custom-scrollbar pr-2 whitespace-pre-wrap">
+                          {node.content || "No detailed content available for this node."}
+                        </div>
+                        {node.metadata?.tags && (
+                          <div className="mt-3 pt-3 border-t border-white/5 flex flex-wrap gap-1.5">
+                            {node.metadata.tags.map(tag => (
+                              <span key={tag} className="text-[9px] px-1.5 py-0.5 rounded bg-white/5 text-zinc-500 uppercase tracking-widest">
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
