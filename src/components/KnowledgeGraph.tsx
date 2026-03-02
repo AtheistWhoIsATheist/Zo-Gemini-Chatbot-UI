@@ -7,7 +7,7 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { corpusNodes, corpusLinks, Node } from '../data/corpus';
 import { cn } from '../lib/utils';
-import { Hand, Maximize, RotateCcw, ZoomIn, ShieldAlert, CheckCircle2, HelpCircle } from 'lucide-react';
+import { Hand, Maximize, RotateCcw, ZoomIn, ShieldAlert, CheckCircle2, HelpCircle, Activity, Sparkles, Network, BrainCircuit } from 'lucide-react';
 import { useGraphLayout } from '../hooks/useGraphLayout';
 
 interface KnowledgeGraphProps {
@@ -27,11 +27,13 @@ export function KnowledgeGraph({ onNodeSelect, selectedNodeId }: KnowledgeGraphP
   const [groupBy, setGroupBy] = useState<'type' | 'status' | 'none'>('none');
   const [expandedNodeId, setExpandedNodeId] = useState<string | null>(null);
 
+  // STEP 1 & 3: Semantic Extraction & Categorical Tagging (Filtering)
   const filteredNodes = useMemo(() => {
     if (activeFilters.size === 0) return corpusNodes;
     return corpusNodes.filter(node => activeFilters.has(node.type));
   }, [activeFilters]);
 
+  // STEP 4 & 5: Topology & Visual Rendering
   const { nodePositions } = useGraphLayout({ nodes: filteredNodes, links: corpusLinks, depth, groupBy });
 
   useEffect(() => {
@@ -49,29 +51,21 @@ export function KnowledgeGraph({ onNodeSelect, selectedNodeId }: KnowledgeGraphP
   }, []);
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (e.button === 0) {
-      setIsPanning(true);
-    }
+    if (e.button === 0) setIsPanning(true);
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (isPanning) {
-      setOffset(prev => ({
-        x: prev.x + e.movementX,
-        y: prev.y + e.movementY
-      }));
+      setOffset(prev => ({ x: prev.x + e.movementX, y: prev.y + e.movementY }));
     }
   };
 
-  const handleMouseUp = () => {
-    setIsPanning(false);
-  };
+  const handleMouseUp = () => setIsPanning(false);
 
   const handleWheel = (e: React.WheelEvent) => {
     if (e.ctrlKey || e.metaKey) {
       const zoomSpeed = 0.001;
-      const newScale = Math.max(0.5, Math.min(3, scale - e.deltaY * zoomSpeed));
-      setScale(newScale);
+      setScale(Math.max(0.5, Math.min(3, scale - e.deltaY * zoomSpeed)));
     } else {
       const depthSpeed = 0.001;
       setDepth(prev => Math.max(0.5, Math.min(2.5, prev - e.deltaY * depthSpeed)));
@@ -84,6 +78,41 @@ export function KnowledgeGraph({ onNodeSelect, selectedNodeId }: KnowledgeGraphP
     setDepth(1.2);
   };
 
+  // STEP 6: Dynamic Insight Generation Engine
+  const getInsights = (nodeId: string) => {
+    const node = corpusNodes.find(n => n.id === nodeId);
+    if (!node) return null;
+
+    const connectedLinks = corpusLinks.filter(l => l.source === nodeId || l.target === nodeId);
+    const connectedNodeIds = new Set(connectedLinks.map(l => l.source === nodeId ? l.target : l.source));
+
+    // STEP 2: Dimensional Embedding (Vectorization) - Mocked via tag/type overlap
+    const similarities = corpusNodes
+      .filter(n => n.id !== nodeId && !connectedNodeIds.has(n.id))
+      .map(n => {
+        let score = 0;
+        if (n.type === node.type) score += 0.3;
+        const sharedTags = (n.metadata?.tags || []).filter(t => (node.metadata?.tags || []).includes(t));
+        score += sharedTags.length * 0.25;
+        return { ...n, similarity: Math.min(score, 0.99) };
+      })
+      .filter(n => n.similarity > 0)
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, 3);
+
+    let suggestion = "";
+    if (similarities.length > 0) {
+      suggestion = `Explore the latent vector relationship between "${node.label}" and "${similarities[0].label}". They share dimensional attributes but lack a direct topological edge.`;
+    } else if (connectedNodeIds.size === 0) {
+      suggestion = `This node exists in a void state. Synthesize connections to core treatises to anchor it in the network.`;
+    } else {
+      suggestion = `High centrality detected. Consider collapsing sub-nodes into a new overarching methodology.`;
+    }
+
+    return { degree: connectedLinks.length, similarities, suggestion };
+  };
+
+  const selectedInsights = selectedNodeId ? getInsights(selectedNodeId) : null;
   const highlightedNodes = ['spiritual_emergency', 'void', 'collapse', 'anpes', 'ethics'];
   
   const getNodeStyle = (node: Node, isSelected: boolean, isHovered: boolean) => {
@@ -211,20 +240,63 @@ export function KnowledgeGraph({ onNodeSelect, selectedNodeId }: KnowledgeGraphP
             </div>
           </div>
         </div>
-        <div className="flex flex-col items-end gap-0.5 opacity-40">
-          <span className="text-[8px] uppercase tracking-tighter text-zinc-500">Left-click + Drag to Pan</span>
-          <span className="text-[8px] uppercase tracking-tighter text-zinc-500">Ctrl + Scroll to Zoom</span>
-          <span className="text-[8px] uppercase tracking-tighter text-zinc-500">Scroll to adjust Depth</span>
-        </div>
       </div>
 
-      {/* Cursor Affordance */}
-      <div className="absolute bottom-8 left-8 z-20 flex items-center gap-3 opacity-30">
-        <Hand className="w-4 h-4 text-zinc-500" />
-        <div className="h-[1px] w-12 bg-zinc-800 relative">
-          <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-1 bg-orange-500 rounded-full"></div>
-        </div>
-      </div>
+      {/* STEP 6: Dynamic Insight Generation Panel */}
+      <AnimatePresence>
+        {selectedNodeId && selectedInsights && (
+          <motion.div
+            initial={{ opacity: 0, x: 20, filter: 'blur(10px)' }}
+            animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
+            exit={{ opacity: 0, x: 20, filter: 'blur(10px)' }}
+            className="absolute bottom-6 right-6 w-80 neo-flat rounded-xl p-5 z-40 border border-orange-500/20 shadow-[0_0_30px_rgba(249,115,22,0.1)] pointer-events-none"
+          >
+            <h3 className="text-orange-500 font-mono text-[10px] uppercase tracking-widest mb-4 flex items-center gap-2">
+              <BrainCircuit className="w-3.5 h-3.5" /> AI Graph Analytics
+            </h3>
+
+            <div className="space-y-4">
+              {/* Centrality Scoring */}
+              <div>
+                <div className="text-[8px] text-zinc-500 uppercase tracking-widest mb-1 flex items-center gap-1.5">
+                  <Network className="w-3 h-3" /> Centrality Score
+                </div>
+                <div className="text-zinc-200 text-xs font-mono">
+                  {selectedInsights.degree} Topological Edges (Degree)
+                </div>
+              </div>
+
+              {/* Dimensional Embedding (Vectorization) */}
+              <div>
+                <div className="text-[8px] text-zinc-500 uppercase tracking-widest mb-1 flex items-center gap-1.5">
+                  <Activity className="w-3 h-3" /> Dimensional Proximity
+                </div>
+                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                  {selectedInsights.similarities.length > 0 ? (
+                    selectedInsights.similarities.map(sn => (
+                      <span key={sn.id} className="text-[9px] px-2 py-1 rounded bg-white/5 text-zinc-300 border border-white/10 font-mono">
+                        {sn.label} ({(sn.similarity * 100).toFixed(0)}%)
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-[9px] text-zinc-600 font-mono italic">No close semantic neighbors detected.</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Dynamic Insight Suggestion */}
+              <div className="p-3 rounded-lg bg-orange-500/10 border border-orange-500/20 mt-2">
+                <div className="text-[8px] text-orange-400 uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+                  <Sparkles className="w-3 h-3" /> Suggested Path
+                </div>
+                <div className="text-[10px] text-orange-200/80 leading-relaxed font-mono">
+                  {selectedInsights.suggestion}
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Centered Origin Wrapper */}
       <div className="absolute top-1/2 left-1/2 w-0 h-0">
@@ -240,26 +312,22 @@ export function KnowledgeGraph({ onNodeSelect, selectedNodeId }: KnowledgeGraphP
               
               const isHighlighted = selectedNodeId === link.source || selectedNodeId === link.target || hoveredNodeId === link.source || hoveredNodeId === link.target;
               
-              // Calculate absolute pixel positions based on percentages and current dimensions
               const sourceX = (sourceNode.pctX / 100) * dimensions.width;
               const sourceY = (sourceNode.pctY / 100) * dimensions.height;
               const targetX = (targetNode.pctX / 100) * dimensions.width;
               const targetY = (targetNode.pctY / 100) * dimensions.height;
 
-              // Calculate control point for quadratic bezier curve
               const midX = (sourceX + targetX) / 2;
               const midY = (sourceY + targetY) / 2;
               
               const dx = targetX - sourceX;
               const dy = targetY - sourceY;
               const dist = Math.sqrt(dx * dx + dy * dy);
-              const curveOffset = dist * 0.15; // 15% of distance
+              const curveOffset = dist * 0.15;
               
-              // Normal vector
               const nx = -dy / dist;
               const ny = dx / dist;
               
-              // Alternate curve direction based on index
               const dir = i % 2 === 0 ? 1 : -1;
               
               const cx = midX + nx * curveOffset * dir;
@@ -298,9 +366,14 @@ export function KnowledgeGraph({ onNodeSelect, selectedNodeId }: KnowledgeGraphP
             const isSelected = selectedNodeId === node.id;
             const isHovered = hoveredNodeId === node.id;
             
-            // Calculate absolute pixel positions based on percentages and current dimensions
             const nodeX = (node.pctX / 100) * dimensions.width;
             const nodeY = (node.pctY / 100) * dimensions.height;
+
+            // STEP 4: Centrality Scaling
+            // Scale the node visually based on its calculated degree (centrality)
+            const degreeScale = 1 + ((node as any).degree * 0.04);
+            const activeScale = isSelected || isHovered || expandedNodeId === node.id ? 1.15 : 1;
+            const finalScale = degreeScale * activeScale;
 
             return (
               <motion.div 
@@ -340,22 +413,13 @@ export function KnowledgeGraph({ onNodeSelect, selectedNodeId }: KnowledgeGraphP
                             <span className="text-[8px] text-zinc-500 font-mono">{(node.confidence * 100).toFixed(0)}% CONF</span>
                           </div>
                         )}
-                        
-                        {node.evidence_quote_ids && node.evidence_quote_ids.length > 0 && (
-                          <div className="text-[8px] text-zinc-500 mt-2 uppercase tracking-tighter">
-                            PROVENANCE: {node.evidence_quote_ids.length} QUOTES
-                          </div>
-                        )}
                       </motion.div>
                     )}
                   </AnimatePresence>
 
                   <motion.button
                     initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ 
-                      opacity: 1, 
-                      scale: isSelected || isHovered || expandedNodeId === node.id ? 1.1 : 1,
-                    }}
+                    animate={{ opacity: 1, scale: finalScale }}
                     transition={{ duration: 0.3, ease: [0.23, 1, 0.32, 1] }}
                     onClick={(e) => {
                       e.stopPropagation();
