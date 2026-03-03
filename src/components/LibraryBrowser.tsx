@@ -6,8 +6,9 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Node } from '../data/corpus';
-import { File, Video, Link as LinkIcon, Plus, Search, X } from 'lucide-react';
+import { File, Video, Link as LinkIcon, Plus, Search, X, Download, AlertCircle, CheckCircle2, FileText, FileJson, FileType } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { exportEngine, ExportFormat } from '../utils/exportEngine';
 
 interface LibraryBrowserProps {
   nodes: Node[];
@@ -18,10 +19,18 @@ interface LibraryBrowserProps {
 
 export function LibraryBrowser({ nodes, addNode, onNodeSelect, selectedNodeId }: LibraryBrowserProps) {
   const [isAdding, setIsAdding] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  
+  // Form State
   const [newLabel, setNewLabel] = useState('');
   const [newContent, setNewContent] = useState('');
   const [newUrl, setNewUrl] = useState('');
   const [newTags, setNewTags] = useState('');
+  const [sourceType, setSourceType] = useState<'article' | 'video' | 'tweet' | 'paper'>('article');
+  
+  // Validation & Feedback State
+  const [errors, setErrors] = useState<{label?: string; content?: string}>({});
+  const [showSuccessToast, setShowSuccessToast] = useState(false);
 
   const libraryItems = nodes.filter(n => n.type === 'library_item');
 
@@ -31,8 +40,16 @@ export function LibraryBrowser({ nodes, addNode, onNodeSelect, selectedNodeId }:
     return <LinkIcon className="w-4 h-4" />;
   };
 
+  const validateForm = () => {
+    const newErrors: {label?: string; content?: string} = {};
+    if (!newLabel.trim()) newErrors.label = "Title is required to anchor the node.";
+    if (!newContent.trim()) newErrors.content = "Content cannot be void (yet).";
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleAdd = () => {
-    if (!newLabel || !newContent) return;
+    if (!validateForm()) return;
 
     const newNode: Node = {
       id: `lib_${Date.now()}`,
@@ -44,20 +61,46 @@ export function LibraryBrowser({ nodes, addNode, onNodeSelect, selectedNodeId }:
         url: newUrl,
         tags: newTags.split(',').map(t => t.trim()).filter(Boolean),
         date_added: new Date().toISOString().split('T')[0],
-        geometry: 'square'
+        geometry: 'square',
+        chromatic_tag: sourceType // Storing source type in metadata for now
       }
     };
 
     addNode(newNode);
+    
+    // Reset & Feedback
     setIsAdding(false);
     setNewLabel('');
     setNewContent('');
     setNewUrl('');
     setNewTags('');
+    setErrors({});
+    setShowSuccessToast(true);
+    setTimeout(() => setShowSuccessToast(false), 3000);
+  };
+
+  const handleExport = (format: ExportFormat) => {
+    exportEngine.export(libraryItems, format);
+    setIsExporting(false);
   };
 
   return (
     <div className="flex flex-col h-full neo-bg p-8 font-sans relative">
+      {/* Success Toast */}
+      <AnimatePresence>
+        {showSuccessToast && (
+          <motion.div 
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="absolute top-6 left-1/2 -translate-x-1/2 z-50 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 px-6 py-3 rounded-full shadow-lg flex items-center gap-2"
+          >
+            <CheckCircle2 className="w-4 h-4" />
+            <span className="text-xs font-medium uppercase tracking-wider">Ingestion Complete</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="flex items-center justify-between mb-12">
         <div>
           <h2 className="text-2xl font-serif text-zinc-100 tracking-tight">The Library</h2>
@@ -72,6 +115,52 @@ export function LibraryBrowser({ nodes, addNode, onNodeSelect, selectedNodeId }:
               className="neo-pressed rounded-full py-2 pl-9 pr-4 text-[11px] text-zinc-300 placeholder:text-zinc-600 focus:outline-none w-64"
             />
           </div>
+          
+          {/* Export Button */}
+          <div className="relative">
+            <button 
+              onClick={() => setIsExporting(!isExporting)}
+              className="w-10 h-10 rounded-full neo-convex flex items-center justify-center text-zinc-500 hover:text-zinc-300 transition-all"
+              title="Export Corpus"
+            >
+              <Download className="w-5 h-5" />
+            </button>
+            <AnimatePresence>
+              {isExporting && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setIsExporting(false)} />
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                    className="absolute right-0 top-12 w-48 neo-flat border border-white/10 rounded-xl p-2 z-40 shadow-xl flex flex-col gap-1"
+                  >
+                    <div className="px-3 py-2 text-[10px] text-zinc-500 uppercase tracking-widest font-mono border-b border-white/5 mb-1">
+                      Select Format
+                    </div>
+                    {[
+                      { label: 'JSON Data', format: 'json', icon: FileJson },
+                      { label: 'CSV Table', format: 'csv', icon: FileType },
+                      { label: 'Markdown', format: 'md', icon: FileText },
+                      { label: 'Plain Text', format: 'txt', icon: FileText },
+                      { label: 'PDF Report', format: 'pdf', icon: File },
+                      { label: 'Word Doc', format: 'docx', icon: File }
+                    ].map((item) => (
+                      <button
+                        key={item.format}
+                        onClick={() => handleExport(item.format as ExportFormat)}
+                        className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/5 text-zinc-400 hover:text-zinc-200 transition-colors text-xs text-left"
+                      >
+                        <item.icon className="w-3.5 h-3.5" />
+                        {item.label}
+                      </button>
+                    ))}
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
+          </div>
+
           <button 
             onClick={() => setIsAdding(true)}
             className="w-10 h-10 rounded-full neo-convex flex items-center justify-center text-orange-500/80 hover:text-orange-500 transition-all"
@@ -159,25 +248,63 @@ export function LibraryBrowser({ nodes, addNode, onNodeSelect, selectedNodeId }:
 
               <div className="space-y-4">
                 <div>
-                  <label className="text-[10px] uppercase tracking-widest text-zinc-500 font-mono mb-1.5 block">Title / Label</label>
+                  <label className="text-[10px] uppercase tracking-widest text-zinc-500 font-mono mb-1.5 block">Title / Label *</label>
                   <input 
                     type="text" 
                     value={newLabel}
                     onChange={(e) => setNewLabel(e.target.value)}
-                    className="w-full neo-pressed rounded-xl px-4 py-3 text-sm text-zinc-200 placeholder:text-zinc-700 focus:outline-none focus:ring-1 focus:ring-orange-500/50"
+                    className={cn(
+                      "w-full neo-pressed rounded-xl px-4 py-3 text-sm text-zinc-200 placeholder:text-zinc-700 focus:outline-none focus:ring-1 transition-all",
+                      errors.label ? "ring-1 ring-red-500/50" : "focus:ring-orange-500/50"
+                    )}
                     placeholder="e.g., The Architecture of Silence"
                   />
+                  {errors.label && (
+                    <div className="flex items-center gap-1 mt-1 text-red-500 text-[10px]">
+                      <AlertCircle className="w-3 h-3" />
+                      <span>{errors.label}</span>
+                    </div>
+                  )}
                 </div>
 
                 <div>
-                  <label className="text-[10px] uppercase tracking-widest text-zinc-500 font-mono mb-1.5 block">Content / Abstract</label>
+                  <label className="text-[10px] uppercase tracking-widest text-zinc-500 font-mono mb-1.5 block">Source Type</label>
+                  <div className="flex gap-2">
+                    {['article', 'video', 'tweet', 'paper'].map((type) => (
+                      <button
+                        key={type}
+                        onClick={() => setSourceType(type as any)}
+                        className={cn(
+                          "px-3 py-1.5 rounded-lg text-[10px] uppercase tracking-wider font-mono transition-all",
+                          sourceType === type 
+                            ? "bg-orange-500/20 text-orange-400 border border-orange-500/30" 
+                            : "neo-convex text-zinc-600 hover:text-zinc-400"
+                        )}
+                      >
+                        {type}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] uppercase tracking-widest text-zinc-500 font-mono mb-1.5 block">Content / Abstract *</label>
                   <textarea 
                     value={newContent}
                     onChange={(e) => setNewContent(e.target.value)}
                     rows={4}
-                    className="w-full neo-pressed rounded-xl px-4 py-3 text-sm text-zinc-200 placeholder:text-zinc-700 focus:outline-none focus:ring-1 focus:ring-orange-500/50 resize-none"
+                    className={cn(
+                      "w-full neo-pressed rounded-xl px-4 py-3 text-sm text-zinc-200 placeholder:text-zinc-700 focus:outline-none focus:ring-1 transition-all resize-none",
+                      errors.content ? "ring-1 ring-red-500/50" : "focus:ring-orange-500/50"
+                    )}
                     placeholder="Describe the essence of this data..."
                   />
+                  {errors.content && (
+                    <div className="flex items-center gap-1 mt-1 text-red-500 text-[10px]">
+                      <AlertCircle className="w-3 h-3" />
+                      <span>{errors.content}</span>
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -205,8 +332,7 @@ export function LibraryBrowser({ nodes, addNode, onNodeSelect, selectedNodeId }:
                 <div className="pt-4 flex justify-end">
                   <button 
                     onClick={handleAdd}
-                    disabled={!newLabel || !newContent}
-                    className="px-6 py-2 rounded-xl bg-orange-500 text-black font-medium text-sm hover:bg-orange-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-6 py-2 rounded-xl bg-orange-500 text-black font-medium text-sm hover:bg-orange-400 transition-colors shadow-[0_0_20px_rgba(249,115,22,0.3)]"
                   >
                     Ingest into Void
                   </button>

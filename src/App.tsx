@@ -10,10 +10,11 @@ import { Chatbot } from './components/Chatbot';
 import { LibraryBrowser } from './components/LibraryBrowser';
 import { SummaryFeed } from './components/SummaryFeed';
 import { RevelationDigest } from './components/RevelationDigest';
+import { DatabaseStatusPanel } from './components/DatabaseStatusPanel';
 import { Node, corpusNodes as initialCorpusNodes } from './data/corpus';
 import { Network, FileText, Database, Hexagon, ChevronLeft, ChevronRight, Library, Sparkles, Eye } from 'lucide-react';
 import { cn } from './lib/utils';
-import { motion, AnimatePresence, LayoutGroup } from 'motion/react';
+import { motion, LayoutGroup } from 'motion/react';
 
 export default function App() {
   const [nodes, setNodes] = useState<Node[]>(initialCorpusNodes);
@@ -21,7 +22,8 @@ export default function App() {
   const [viewMode, setViewMode] = useState<'graph' | 'document' | 'library' | 'summaries' | 'revelation'>('graph');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isChatCollapsed, setIsChatCollapsed] = useState(false);
-  const [showDbToast, setShowDbToast] = useState(false);
+  const [isDbPanelOpen, setIsDbPanelOpen] = useState(false);
+  const [lastSync, setLastSync] = useState(new Date().toLocaleTimeString());
 
   const handleNodeSelect = useCallback((node: Node) => {
     setSelectedNode(node);
@@ -38,15 +40,36 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(node)
       });
+      setLastSync(new Date().toLocaleTimeString());
     } catch (err) {
       console.error('Failed to sync node to backend:', err);
     }
   }, []);
 
+  const handleReIndex = async () => {
+    try {
+      await fetch('/api/reindex', { method: 'POST' });
+      // In a real app, this might fetch the updated node list
+      setLastSync(new Date().toLocaleTimeString());
+    } catch (err) {
+      console.error('Re-index failed:', err);
+      throw err;
+    }
+  };
+
   return (
     <LayoutGroup>
       <div className="flex h-screen w-full neo-bg text-zinc-300 overflow-hidden selection:bg-orange-500/30 relative">
         
+        {/* Database Status Panel */}
+        <DatabaseStatusPanel 
+          isOpen={isDbPanelOpen} 
+          onClose={() => setIsDbPanelOpen(false)}
+          nodeCount={nodes.length}
+          lastSync={lastSync}
+          onReIndex={handleReIndex}
+        />
+
         {/* Left Sidebar */}
         <motion.div 
           layout
@@ -109,24 +132,11 @@ export default function App() {
                   <Eye className="w-5 h-5" strokeWidth={1.5} />
                 </button>
                 <button 
-                  onClick={() => {
-                    if (selectedNode?.content) setViewMode('document');
-                  }}
+                  onClick={() => setIsDbPanelOpen(true)}
                   className={cn(
-                    "w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer",
-                    viewMode === 'document' ? "neo-pressed text-orange-400" : "neo-convex text-zinc-500 hover:text-zinc-300",
-                    !selectedNode?.content && "opacity-30 cursor-not-allowed"
+                    "w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer relative",
+                    isDbPanelOpen ? "neo-pressed text-orange-400" : "neo-convex text-zinc-500 hover:text-zinc-300 hover:text-orange-400"
                   )}
-                  title="Document Viewer"
-                >
-                  <FileText className="w-5 h-5" strokeWidth={1.5} />
-                </button>
-                <button 
-                  onClick={() => {
-                    setShowDbToast(true);
-                    setTimeout(() => setShowDbToast(false), 3000);
-                  }}
-                  className="w-12 h-12 rounded-2xl flex items-center justify-center neo-convex text-zinc-500 hover:text-zinc-300 hover:text-orange-400 transition-all cursor-pointer relative" 
                   title="Corpus Database Active"
                 >
                   <Database className="w-5 h-5" strokeWidth={1.5} />
@@ -207,24 +217,6 @@ export default function App() {
             </motion.div>
           </div>
         </motion.div>
-
-        {/* Database Status Toast */}
-        <AnimatePresence>
-          {showDbToast && (
-            <motion.div 
-              initial={{ opacity: 0, y: 20, scale: 0.9 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 10, scale: 0.9 }}
-              className="absolute bottom-6 left-24 z-50 bg-black/80 backdrop-blur-xl border border-emerald-500/30 text-emerald-400 px-4 py-3 rounded-xl text-[10px] uppercase tracking-widest shadow-[0_0_30px_rgba(16,185,129,0.15)] flex items-center gap-3 pointer-events-none"
-            >
-              <Database className="w-4 h-4" />
-              <div>
-                <div className="font-bold text-white mb-0.5">Corpus Database</div>
-                <div className="opacity-80">100% Saturated • All Nodes Synced</div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
 
       </div>
     </LayoutGroup>
