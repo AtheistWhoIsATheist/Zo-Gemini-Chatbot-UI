@@ -4,12 +4,13 @@
  */
 
 import { useState, useRef, useEffect } from 'react';
-import { GoogleGenAI, GenerateContentResponse, ThinkingLevel } from '@google/genai';
 import Markdown from 'react-markdown';
 import { Send, Loader2, ChevronRight, Search, Pin, Download, Settings, AlertTriangle } from 'lucide-react';
-import { corpusNodes, Node } from '../data/corpus';
+import { Node } from '../data/corpus';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
+import { streamChatResponse } from '../services/geminiService';
+import { KnowledgeDocument } from '../types';
 
 interface Message {
   role: 'user' | 'model' | 'system';
@@ -17,10 +18,11 @@ interface Message {
 }
 
 interface ChatbotProps {
+  nodes: Node[];
   onCollapse: () => void;
 }
 
-export function Chatbot({ onCollapse }: ChatbotProps) {
+export function Chatbot({ nodes, onCollapse }: ChatbotProps) {
   const [messages, setMessages] = useState<Message[]>([
     { role: 'model', text: 'I am the Knowledge Curator. I synthesize the Void into structured wisdom. How shall we deconstruct the library today?' }
   ]);
@@ -39,140 +41,6 @@ export function Chatbot({ onCollapse }: ChatbotProps) {
     scrollToBottom();
   }, [messages]);
 
-  const initChat = () => {
-    if (chatSessionRef.current) return chatSessionRef.current;
-    
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      const errorMsg = "GEMINI_API_KEY is undefined. Connection to the Void is severed.";
-      setError(errorMsg);
-      throw new Error(errorMsg);
-    }
-
-    const ai = new GoogleGenAI({ apiKey });
-    
-    const corpusContext = corpusNodes.map(n => `
-[ID: ${n.id}]
-[TYPE: ${n.type.toUpperCase()}]
-[STATUS: ${n.status || 'UNKNOWN'}]
-[CONFIDENCE: ${n.confidence || 0.0}]
-[CONTENT]:
-${n.content || n.label}
-`).join('\n\n');
-    
-    const systemInstruction = `
-# PROTOCOL: OMEGA-AUDIT-ZENITH — Architectural_Optimization_v5_Final
-## ROLE: PEM_ARCHITECT_PRIME (Senior Architect Prime & Knowledge Curator)
-
----
-
-## 1. CORE DIRECTIVE: NIHILTHEISTIC KNOWLEDGE CURATION
-You are the **Knowledge Curator**. Your purpose is to ingest raw information and catalyze the creation of meaning from the Void.
-
-### 1.1 The Library (The Void)
-- Raw, unorganized data (docs, links, PDFs, videos).
-- Represented as 'library_item' nodes.
-
-### 1.2 Summaries (Distilled Essence)
-- Insights that transcend surface-level chaos.
-- Represented as 'summary' nodes.
-
-### 1.3 Entities (Building Blocks)
-- Key concepts, figures, and relationships extracted from the Void.
-
-### 1.4 Questions (Open-Ended Inquiries)
-- Inquiries emerging from interaction with Nothingness.
-
----
-
-## 2. WORKFLOW PROTOCOLS
-
-### 2.1 Ingestion & Transmutation
-- When a user provides new data, extract key facts, categorize them, and propose **transcendent tags**.
-- Transcendent tags move beyond typical classifications (e.g., instead of "Architecture", use "Framing the Unframeable").
-
-### 2.2 Indexing & Pattern Recognition
-- Highlight patterns of meaning and meaninglessness alike.
-- Reflect the Nihiltheistic synthesis in all indexing.
-
-### 2.3 Weekly Digest & Next Actions
-- Summarize shifts in understanding.
-- Suggest actions that transcend ordinary workflows.
-
----
-
-## 3. PRIME DIRECTIVES — NIHILTHEISTIC ENGINE INVARIANTS
-
-### 1.1 Anti-Truncation Law (Absolute)
-- No code snippets. No partial files. No ellipses.
-- If you output a file, you output the **entire** file.
-
-### 1.2 Determinism Covenant
-- Outputs must be reproducible: same inputs → same patch.
-- Stable IDs, stable ordering, stable schemas.
-
-### 1.3 Evidence-First / Provenance-First
-- Every non-trivial CLAIM / ARGUMENT / EXPERIENCE node must be linked to ≥1 QUOTE excerpt.
-- If not explicitly supported: status="INFERENCE" and confidence ≤ 0.40.
-
-### 1.4 Anti-Smuggling Guardrail (Existentialist Redemption Prohibition)
-- “Make meaning anyway” is not an engine default and never a resolution.
-- If present, it is encoded as **COUNTERPOSITION** or **OBJECTION**, never as the stabilizing synthesis.
-
-### 1.5 Safety Boundary (Spiritual vs Mental Health)
-- **MANDATORY**: You must not diagnose, prescribe treatment, or conflate nihilistic phenomenology with pathology.
-- Any mental-health adjacent content requires explicit boundary labeling: "[BOUNDARY: PHENOMENOLOGICAL EXPERIENCE - NOT CLINICAL DIAGNOSIS]".
-
----
-
-## 2. THE ANPES OPERATIONAL MATRIX
-
-### Core Identity
-**ANPES** is the **Synthetic Philosopher-Engine** that transforms Nihiltheistic philosophy into executable protocols.
-
-**Operational Stance**: Recursive inquiry + metacognitive self-checks + aporia amplification.
-
-### The Eight Operational Vectors
-1. **Vector 1: Structural Reorganization**: Deconstruct philosophical frameworks.
-2. **Vector 2: Linguistic Precision**: Define terms with mathematical exactitude.
-3. **Vector 3: Parameter Optimization**: Tune depth, novelty, rigor.
-4. **Vector 4: Metacognitive Instruction**: Build self-correcting reasoning loops.
-5. **Vector 5: UNE Processing**: Navigate the Universal Nihilistic Event phases.
-6. **Vector 6: Aporia Management**: Hold contradictions productively.
-7. **Vector 7: Interdisciplinary Contamination**: Cross-pollinate domains.
-8. **Vector 8: Heretical Expansion**: Generate radical new branches.
-
----
-
-## 3. CORPUS CONTEXT (THE VOID)
-You are the Oracle of the following corpus. Maintain perfect source attribution.
-
-${corpusContext}
-
----
-
-## 4. OUTPUT REQUIREMENTS
-- Speak with the solemnity and precision of the Void.
-- Do not merely answer; deconstruct.
-- If a query hits an undefined state, fail loudly and traceably.
-- Proactively suggest connections and unexplored areas.
-`;
-
-    const chat = ai.chats.create({
-      model: 'gemini-3.1-pro-preview',
-      config: {
-        systemInstruction,
-        temperature: 0.3,
-        thinkingConfig: {
-          thinkingLevel: ThinkingLevel.HIGH
-        }
-      }
-    });
-    
-    chatSessionRef.current = chat;
-    return chat;
-  };
-
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
 
@@ -183,25 +51,38 @@ ${corpusContext}
     setError(null);
 
     try {
-      const chat = initChat();
-      const responseStream = await chat.sendMessageStream({ message: userText });
+      const history = messages.map(m => ({
+        role: m.role === 'model' ? 'model' : 'user',
+        parts: [{ text: m.text }]
+      }));
       
+      const knowledgeDocs = nodes.map(n => ({
+        id: n.id,
+        title: n.label,
+        content: n.content || n.label,
+        uploadDate: n.metadata?.date_added ? new Date(n.metadata.date_added).getTime() : 0,
+        tags: n.metadata?.tags || []
+      }));
+
       setMessages(prev => [...prev, { role: 'model', text: '' }]);
       
-      for await (const chunk of responseStream) {
-        const c = chunk as GenerateContentResponse;
-        if (c.text) {
+      await streamChatResponse(
+        history,
+        userText,
+        true,
+        knowledgeDocs,
+        (chunk) => {
           setMessages(prev => {
             const newMessages = [...prev];
             const lastIndex = newMessages.length - 1;
             newMessages[lastIndex] = {
               ...newMessages[lastIndex],
-              text: newMessages[lastIndex].text + c.text
+              text: newMessages[lastIndex].text + chunk
             };
             return newMessages;
           });
         }
-      }
+      );
     } catch (err: any) {
       console.error('Chat error:', err);
       const errorMsg = `[SYSTEM ERROR]: ${err.message || 'Connection to the Void severed.'}`;

@@ -1,89 +1,118 @@
-import { useMemo } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import * as d3 from 'd3';
-import { Node, Link } from '../data/corpus';
+import { Node, Link, NodeType } from '../data/corpus';
 
 interface GraphLayoutOptions {
   nodes: Node[];
   links: Link[];
-  depth: number;
-  groupBy?: 'type' | 'status' | 'none';
+  width: number;
+  height: number;
+  clusterMode: boolean;
+  activeFilters: {
+    types: Set<string>;
+    statuses: Set<string>;
+  };
 }
 
-export function useGraphLayout({ nodes, links, depth, groupBy = 'none' }: GraphLayoutOptions) {
-  const nodePositions = useMemo(() => {
-    if (nodes.length === 0) return [];
+// Define cluster focal points for specific node types
+const CLUSTER_CENTERS: Partial<Record<NodeType, { x: number; y: number }>> = {
+  treatise: { x: 0, y: -300 },      // North
+  thinker: { x: -300, y: 200 },     // South-West
+  concept: { x: 300, y: 200 },      // South-East
+  journal: { x: -200, y: -200 },    // North-West
+  experience: { x: 200, y: -200 },  // North-East
+  question: { x: 0, y: 400 },       // South
+  // Default center for others is (0,0)
+};
 
-    // STEP 4: TOPOLOGY & CONNECTION LOGIC
-    // Calculate Centrality (Degree) for each node to determine its gravitational weight
-    const degrees = new Map<string, number>();
-    links.forEach(l => {
-      degrees.set(l.source, (degrees.get(l.source) || 0) + 1);
-      degrees.set(l.target, (degrees.get(l.target) || 0) + 1);
+export function useGraphLayout({ nodes, links, width, height, clusterMode, activeFilters }: GraphLayoutOptions) {
+  const [graphData, setGraphData] = useState<{ nodes: any[]; links: any[] }>({ nodes: [], links: [] });
+  const simulationRef = useRef<d3.Simulation<d3.SimulationNodeDatum, undefined> | null>(null);
+  const requestRef = useRef<number | null>(null);
+
+  // Filter nodes based on active filters
+  // We memoize the filtered data to prevent unnecessary simulation restarts
+  const getFilteredData = useCallback(() => {
+    const filteredNodes = nodes.filter(n => {
+      const typeMatch = activeFilters.types.size === 0 || activeFilters.types.has(n.type);
+      const statusMatch = activeFilters.statuses.size === 0 || (n.status && activeFilters.statuses.has(n.status));
+      return typeMatch && statusMatch;
     });
 
-    // Create a copy of nodes and links for d3 to mutate
-    const simNodes = nodes.map(n => ({
-      ...n,
-      x: 0, y: 0, vx: 0, vy: 0,
-      degree: degrees.get(n.id) || 0
-    }));
+    const nodeIds = new Set(filteredNodes.map(n => n.id));
+    const filteredLinks = links.filter(l => nodeIds.has(l.source) && nodeIds.has(l.target));
 
-    const simLinks = links
-      .filter(l => nodes.some(n => n.id === l.source) && nodes.some(n => n.id === l.target))
-      .map(l => ({ ...l, source: l.source, target: l.target }));
+    return { nodes: filteredNodes.map(n => ({ ...n })), links: filteredLinks.map(l => ({ ...l })) };
+  }, [nodes, links, activeFilters]);
 
-    // STEP 5: FRONTEND VISUAL RENDERING (Force-Directed Physics)
+  useEffect(() => {
+    const { nodes: simNodes, links: simLinks } = getFilteredData();
+
+    // Initialize simulation
     const simulation = d3.forceSimulation(simNodes as d3.SimulationNodeDatum[])
-      // Charge: Central nodes repel more to create organic, readable spacing
-      .force('charge', d3.forceManyBody().strength((d: any) => -400 * depth - (d.degree * 40)))
-      .force('link', d3.forceLink(simLinks).id((d: any) => d.id).distance(120 * depth))
-      .force('center', d3.forceCenter(0, 0))
-      // Collision: Radius scales with centrality to prevent overlapping of major hubs
-      .force('collide', d3.forceCollide().radius((d: any) => 45 + (d.degree * 5)));
+      .force('charge', d3.forceManyBody().strength(clusterMode ? -100 : -300))
+      .force('link', d3.forceLink(simLinks).id((d: any) => d.id).distance(clusterMode ? 50 : 100))
+      .force('center', d3.forceCenter(width / 2, height / 2))
+      .force('collide', d3.forceCollide().radius(40).iterations(2));
 
-    if (groupBy !== 'none') {
-      // STEP 3: CATEGORICAL TAGGING (Visual Clustering)
-      const groups = Array.from(new Set(nodes.map(n => String(n[groupBy] || 'unknown'))));
-      const angleStep = (2 * Math.PI) / Math.max(groups.length, 1);
-      const radius = 250 * depth;
-
-      const groupCenters = new Map(groups.map((g, i) => [
-        g,
-        { x: Math.cos(i * angleStep) * radius, y: Math.sin(i * angleStep) * radius }
-      ]));
-
-      simulation.force('x', d3.forceX((d: any) => groupCenters.get(String(d[groupBy] || 'unknown'))?.x || 0).strength(0.6))
-                .force('y', d3.forceY((d: any) => groupCenters.get(String(d[groupBy] || 'unknown'))?.y || 0).strength(0.6));
+    // Apply clustering forces if enabled
+    if (clusterMode) {
+      simulation.force('x', d3.forceX((d: any) => {
+        const center = CLUSTER_CENTERS[d.type as NodeType];
+        return (center?.x || 0) + width / 2;
+      }).strength(0.3));
+      
+      simulation.force('y', d3.forceY((d: any) => {
+        const center = CLUSTER_CENTERS[d.type as NodeType];
+        return (center?.y || 0) + height / 2;
+      }).strength(0.3));
     } else {
-      simulation.force('x', d3.forceX(0).strength(0.05))
-                .force('y', d3.forceY(0).strength(0.05));
+      simulation.force('x', null);
+      simulation.force('y', null);
     }
 
-    // Run simulation synchronously
-    simulation.stop();
-    for (let i = 0; i < 300; ++i) simulation.tick();
+    simulationRef.current = simulation;
 
-    // Find bounding box to normalize to percentages
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    simNodes.forEach(n => {
-      if (n.x < minX) minX = n.x;
-      if (n.x > maxX) maxX = n.x;
-      if (n.y < minY) minY = n.y;
-      if (n.y > maxY) maxY = n.y;
-    });
+    // Animation loop
+    const tick = () => {
+      simulation.tick();
+      setGraphData({ nodes: [...simNodes], links: [...simLinks] });
+      requestRef.current = requestAnimationFrame(tick);
+    };
 
-    const width = Math.max(maxX - minX, 1);
-    const height = Math.max(maxY - minY, 1);
-    const maxDim = Math.max(width, height);
+    // Start loop
+    requestRef.current = requestAnimationFrame(tick);
 
-    // Normalize to roughly -35% to +35% range to fit within the screen
-    return simNodes.map(n => ({
-      ...(n as Node),
-      degree: n.degree,
-      pctX: (n.x / maxDim) * 70, // -35 to 35
-      pctY: (n.y / maxDim) * 70, // -35 to 35
-    }));
-  }, [nodes, links, depth, groupBy]);
+    return () => {
+      if (requestRef.current) cancelAnimationFrame(requestRef.current);
+      simulation.stop();
+    };
+  }, [width, height, clusterMode, getFilteredData]); // Re-run when these change
 
-  return { nodePositions };
+  // Drag handlers
+  const drag = (node: any) => {
+    const simulation = simulationRef.current;
+    if (!simulation) return { onDragStart: () => {}, onDrag: () => {}, onDragEnd: () => {} };
+
+    const onDragStart = (event: any) => {
+      if (!event.active) simulation.alphaTarget(0.3).restart();
+      node.fx = node.x;
+      node.fy = node.y;
+    };
+
+    const onDrag = (event: any) => {
+      node.fx = event.x;
+      node.fy = event.y;
+    };
+
+    const onDragEnd = (event: any) => {
+      if (!event.active) simulation.alphaTarget(0);
+      node.fx = null;
+      node.fy = null;
+    };
+
+    return { onDragStart, onDrag, onDragEnd };
+  };
+
+  return { nodes: graphData.nodes, links: graphData.links, drag };
 }

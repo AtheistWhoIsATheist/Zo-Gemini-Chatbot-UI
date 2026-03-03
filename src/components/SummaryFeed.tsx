@@ -9,13 +9,14 @@ import { Quote, Sparkles, HelpCircle, ChevronRight, CheckCircle2 } from 'lucide-
 import { cn } from '../lib/utils';
 
 interface SummaryFeedProps {
+  nodes: Node[];
   onNodeSelect: (node: Node) => void;
   selectedNodeId?: string;
 }
 
-export function SummaryFeed({ onNodeSelect, selectedNodeId }: SummaryFeedProps) {
-  const summaries = corpusNodes.filter(n => n.type === 'summary');
-  const questions = corpusNodes.filter(n => n.type === 'question');
+export function SummaryFeed({ nodes, onNodeSelect, selectedNodeId }: SummaryFeedProps) {
+  const summaries = nodes.filter(n => n.type === 'summary');
+  const questions = nodes.filter(n => n.type === 'question');
 
   return (
     <div className="flex flex-col h-full neo-bg p-8 font-sans overflow-y-auto custom-scrollbar">

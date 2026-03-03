@@ -10,21 +10,36 @@ import { Chatbot } from './components/Chatbot';
 import { LibraryBrowser } from './components/LibraryBrowser';
 import { SummaryFeed } from './components/SummaryFeed';
 import { RevelationDigest } from './components/RevelationDigest';
-import { Node } from './data/corpus';
+import { Node, corpusNodes as initialCorpusNodes } from './data/corpus';
 import { Network, FileText, Database, Hexagon, ChevronLeft, ChevronRight, Library, Sparkles, Eye } from 'lucide-react';
 import { cn } from './lib/utils';
 import { motion, AnimatePresence, LayoutGroup } from 'motion/react';
 
 export default function App() {
+  const [nodes, setNodes] = useState<Node[]>(initialCorpusNodes);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [viewMode, setViewMode] = useState<'graph' | 'document' | 'library' | 'summaries' | 'revelation'>('graph');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isChatCollapsed, setIsChatCollapsed] = useState(false);
+  const [showDbToast, setShowDbToast] = useState(false);
 
   const handleNodeSelect = useCallback((node: Node) => {
     setSelectedNode(node);
     if (node.content) {
       setViewMode('document');
+    }
+  }, []);
+
+  const addNode = useCallback(async (node: Node) => {
+    setNodes(prev => [...prev, node]);
+    try {
+      await fetch('/api/nodes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(node)
+      });
+    } catch (err) {
+      console.error('Failed to sync node to backend:', err);
     }
   }, []);
 
@@ -106,8 +121,17 @@ export default function App() {
                 >
                   <FileText className="w-5 h-5" strokeWidth={1.5} />
                 </button>
-                <button className="w-12 h-12 rounded-2xl flex items-center justify-center neo-convex text-zinc-500 hover:text-zinc-300 transition-all cursor-pointer" title="Corpus Database Active">
+                <button 
+                  onClick={() => {
+                    setShowDbToast(true);
+                    setTimeout(() => setShowDbToast(false), 3000);
+                  }}
+                  className="w-12 h-12 rounded-2xl flex items-center justify-center neo-convex text-zinc-500 hover:text-zinc-300 hover:text-orange-400 transition-all cursor-pointer relative" 
+                  title="Corpus Database Active"
+                >
                   <Database className="w-5 h-5" strokeWidth={1.5} />
+                  {/* Active indicator dot */}
+                  <span className="absolute top-3 right-3 w-1.5 h-1.5 bg-emerald-500 rounded-full shadow-[0_0_5px_rgba(16,185,129,0.8)]" />
                 </button>
               </div>
             </motion.div>
@@ -130,16 +154,20 @@ export default function App() {
         <motion.div layout className="flex-1 relative z-10 h-full overflow-hidden">
           {viewMode === 'graph' ? (
             <KnowledgeGraph 
+              nodes={nodes}
               onNodeSelect={handleNodeSelect} 
               selectedNodeId={selectedNode?.id} 
             />
           ) : viewMode === 'library' ? (
             <LibraryBrowser 
+              nodes={nodes}
+              addNode={addNode}
               onNodeSelect={handleNodeSelect} 
               selectedNodeId={selectedNode?.id} 
             />
           ) : viewMode === 'summaries' ? (
             <SummaryFeed 
+              nodes={nodes}
               onNodeSelect={handleNodeSelect} 
               selectedNodeId={selectedNode?.id} 
             />
@@ -175,10 +203,28 @@ export default function App() {
               transition={{ duration: 0.2 }}
               className="w-full h-full min-w-[400px]"
             >
-              <Chatbot onCollapse={() => setIsChatCollapsed(true)} />
+              <Chatbot nodes={nodes} onCollapse={() => setIsChatCollapsed(true)} />
             </motion.div>
           </div>
         </motion.div>
+
+        {/* Database Status Toast */}
+        <AnimatePresence>
+          {showDbToast && (
+            <motion.div 
+              initial={{ opacity: 0, y: 20, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.9 }}
+              className="absolute bottom-6 left-24 z-50 bg-black/80 backdrop-blur-xl border border-emerald-500/30 text-emerald-400 px-4 py-3 rounded-xl text-[10px] uppercase tracking-widest shadow-[0_0_30px_rgba(16,185,129,0.15)] flex items-center gap-3 pointer-events-none"
+            >
+              <Database className="w-4 h-4" />
+              <div>
+                <div className="font-bold text-white mb-0.5">Corpus Database</div>
+                <div className="opacity-80">100% Saturated • All Nodes Synced</div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
       </div>
     </LayoutGroup>

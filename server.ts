@@ -34,6 +34,15 @@ async function startServer() {
     res.json(dbNodes);
   });
 
+  app.post('/api/nodes', (req, res) => {
+    const newNode = req.body;
+    if (!newNode || !newNode.id || !newNode.label) {
+      return res.status(400).json({ error: 'Invalid node data' });
+    }
+    dbNodes.push(newNode);
+    res.json({ status: 'success', node: newNode });
+  });
+
   app.get('/api/digest', (req, res) => {
     res.json({ digest: weeklyDigest });
   });
