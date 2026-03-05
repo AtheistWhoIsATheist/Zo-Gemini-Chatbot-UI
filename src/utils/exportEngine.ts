@@ -3,11 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx';
 import { saveAs } from 'file-saver';
 import { Node } from '../data/corpus';
+import { blocksToString } from './voidUtils';
 
 export type ExportFormat = 'json' | 'csv' | 'md' | 'txt' | 'pdf' | 'docx';
 
@@ -52,7 +54,7 @@ const exportToCSV = (nodes: Node[], filename: string) => {
     `"${node.label.replace(/"/g, '""')}"`,
     node.type,
     node.status || '',
-    `"${(node.content || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`,
+    `"${(blocksToString(node.blocks) || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`,
     `"${(node.metadata?.tags || []).join(', ')}"`,
     node.metadata?.date_added || ''
   ]);
@@ -68,7 +70,7 @@ const exportToCSV = (nodes: Node[], filename: string) => {
 
 const exportToMD = (nodes: Node[], filename: string) => {
   const content = nodes.map(node => {
-    return `# ${node.label}\n\n**Type:** ${node.type} | **Status:** ${node.status}\n**Tags:** ${(node.metadata?.tags || []).join(', ')}\n\n${node.content || ''}\n\n---\n`;
+    return `# ${node.label}\n\n**Type:** ${node.type} | **Status:** ${node.status}\n**Tags:** ${(node.metadata?.tags || []).join(', ')}\n\n${blocksToString(node.blocks) || ''}\n\n---\n`;
   }).join('\n');
 
   const blob = new Blob([content], { type: 'text/markdown;charset=utf-8;' });
@@ -77,7 +79,7 @@ const exportToMD = (nodes: Node[], filename: string) => {
 
 const exportToTXT = (nodes: Node[], filename: string) => {
   const content = nodes.map(node => {
-    return `TITLE: ${node.label}\nTYPE: ${node.type}\nSTATUS: ${node.status}\nTAGS: ${(node.metadata?.tags || []).join(', ')}\n\n${node.content || ''}\n\n========================================\n`;
+    return `TITLE: ${node.label}\nTYPE: ${node.type}\nSTATUS: ${node.status}\nTAGS: ${(node.metadata?.tags || []).join(', ')}\n\n${blocksToString(node.blocks) || ''}\n\n========================================\n`;
   }).join('\n');
 
   const blob = new Blob([content], { type: 'text/plain;charset=utf-8;' });
@@ -137,7 +139,7 @@ const exportToDOCX = async (nodes: Node[], filename: string) => {
         spacing: { after: 100 },
       }),
       new Paragraph({
-        text: node.content || '',
+        text: blocksToString(node.blocks) || '',
         spacing: { after: 200 },
       }),
       new Paragraph({

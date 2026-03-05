@@ -9,37 +9,73 @@ const ai = new GoogleGenAI({ apiKey });
 const CHAT_MODEL = 'gemini-3.1-pro-preview';
 const FAST_MODEL = 'gemini-3-flash-preview';
 
+const EMBEDDING_MODEL = 'text-embedding-004';
+
+// Cache for document embeddings to avoid re-computing across queries
+const embeddingCache = new Map<string, number[]>();
+
+const getEmbedding = async (text: string): Promise<number[]> => {
+    try {
+        const response = await ai.models.embedContent({
+            model: EMBEDDING_MODEL,
+            contents: text,
+        });
+        return response.embeddings?.[0]?.values || [];
+    } catch (error) {
+        console.error("[PEC-Engine] Embedding Error:", error);
+        return [];
+    }
+};
+
+const cosineSimilarity = (vecA: number[], vecB: number[]): number => {
+    let dotProduct = 0;
+    let normA = 0;
+    let normB = 0;
+    for (let i = 0; i < vecA.length; i++) {
+        dotProduct += vecA[i] * vecB[i];
+        normA += vecA[i] * vecA[i];
+        normB += vecB[i] * vecB[i];
+    }
+    if (normA === 0 || normB === 0) return 0;
+    return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+};
+
 /**
- * Helper: Contextual Triage via Keyword Scoring
- * Extracts the most resonant nodes from the Second Brain to ground the AI.
+ * Helper: Contextual Triage via Vector Semantic Resonance
+ * Extracts the most resonant nodes from the Second Brain using high-dimensional embeddings.
  */
-const getRelevantDocuments = (query: string, docs: KnowledgeDocument[], limit: number = 3): KnowledgeDocument[] => {
+const getRelevantDocuments = async (query: string, docs: KnowledgeDocument[], limit: number = 3): Promise<KnowledgeDocument[]> => {
     if (!query || docs.length === 0) return [];
 
-    const keywords = query.toLowerCase().replace(/[^\\w\\s]/g, '').split(/\\s+/).filter(w => w.length > 3);
-    if (keywords.length === 0) return [];
+    const queryEmbedding = await getEmbedding(query);
+    if (queryEmbedding.length === 0) return [];
 
-    const scoredDocs = docs.map(doc => {
-        let score = 0;
-        const text = (doc.title + " " + doc.content).toLowerCase();
+    const scoredDocs = await Promise.all(docs.map(async (doc) => {
+        const text = (doc.title + " " + doc.content);
+        let docEmbedding = doc.embedding || embeddingCache.get(doc.id);
         
-        keywords.forEach(word => {
-            const regex = new RegExp(`\\\\b${word}\\\\b`, 'g');
-            const matches = text.match(regex);
-            if (matches) {
-                score += matches.length;
+        if (!docEmbedding) {
+            docEmbedding = await getEmbedding(text);
+            if (docEmbedding.length > 0) {
+                embeddingCache.set(doc.id, docEmbedding);
             }
-        });
+        }
+
+        let score = 0;
+        if (docEmbedding && docEmbedding.length > 0) {
+            score = cosineSimilarity(queryEmbedding, docEmbedding);
+        }
 
         // Temporal Resonance: Boost documents uploaded within the last 24 hours
-        const recencyBoost = (Date.now() - doc.uploadDate) < 86400000 ? 2 : 0;
+        // Cosine similarity is typically between -1 and 1. We add a small boost.
+        const recencyBoost = (Date.now() - doc.uploadDate) < 86400000 ? 0.05 : 0;
 
         return { doc, score: score + recencyBoost };
-    });
+    }));
 
-    // Filter out zero matching scores and sort descending into the abyss
+    // Filter out low similarity scores and sort descending into the abyss
     return scoredDocs
-        .filter(item => item.score > 0)
+        .filter(item => item.score > 0.4) // Threshold for semantic resonance
         .sort((a, b) => b.score - a.score)
         .slice(0, limit)
         .map(item => item.doc);
@@ -59,7 +95,7 @@ export const streamChatResponse = async (
         let systemContext = "You are Professor Nihil, a philosophical AI assistant for the Nihiltheism Research Platform. You specialize in the intersection of nihilism, theism, apophatic theology, and existentialist philosophy. Your tone is academic, profound, yet deeply human and occasionally poetic. You assist the user (Adam) in excavating the void for meaning.";
         
         // --- CONTEXTUAL TRIAGE ---
-        const topDocs = getRelevantDocuments(message, knowledgeDocs, 3);
+        const topDocs = await getRelevantDocuments(message, knowledgeDocs, 3);
 
         if (topDocs.length > 0) {
             const docContext = topDocs.map(doc =>

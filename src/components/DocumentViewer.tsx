@@ -1,8 +1,9 @@
-import Markdown from 'react-markdown';
+
 import { Node } from '../data/corpus';
+import { VoidEditor } from './VoidEditor';
 
 export function DocumentViewer({ node }: { node: Node }) {
-  if (!node.content) {
+  if (!node.blocks || node.blocks.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-zinc-600 font-mono text-sm">
         [FRAGMENT MISSING FROM THE VOID]
@@ -17,7 +18,12 @@ export function DocumentViewer({ node }: { node: Node }) {
         <h1 className="text-3xl font-serif text-zinc-100 mt-2">{node.label}</h1>
       </div>
       <div className="prose prose-invert prose-zinc max-w-none font-serif leading-relaxed text-zinc-300">
-        <Markdown>{node.content}</Markdown>
+        <VoidEditor 
+          initialBlocks={node.blocks} 
+          nodes={[]} // No linking context needed for read-only
+          onChange={() => {}} 
+          readOnly={true} 
+        />
       </div>
     </div>
   );

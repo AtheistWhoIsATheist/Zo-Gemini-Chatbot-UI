@@ -8,6 +8,7 @@ import {
   Filter, Layers, X, Atom, Search, Zap 
 } from 'lucide-react';
 import { useGraphLayout } from '../hooks/useGraphLayout';
+import { blocksToString } from '../utils/voidUtils';
 
 // --- TYPES & CONSTANTS ---
 
@@ -354,11 +355,12 @@ export function KnowledgeGraph({ nodes, onNodeSelect, selectedNodeId }: { nodes:
                 </button>
               </div>
 
+
               {/* Content */}
               <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
                 <div className="prose prose-invert prose-sm max-w-none">
                   <div className="text-zinc-400 leading-relaxed whitespace-pre-wrap font-light text-base">
-                    {nodes.find(n => n.id === expandedNodeId)?.content}
+                    {blocksToString(nodes.find(n => n.id === expandedNodeId)?.blocks)}
                   </div>
                 </div>
 

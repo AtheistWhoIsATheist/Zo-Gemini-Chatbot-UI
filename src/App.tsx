@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+
 import { useState, useCallback } from 'react';
 import { KnowledgeGraph } from './components/KnowledgeGraph';
 import { DocumentViewer } from './components/DocumentViewer';
@@ -11,25 +12,29 @@ import { LibraryBrowser } from './components/LibraryBrowser';
 import { SummaryFeed } from './components/SummaryFeed';
 import { RevelationDigest } from './components/RevelationDigest';
 import { DatabaseStatusPanel } from './components/DatabaseStatusPanel';
+import { RelatedVoids } from './components/RelatedVoids';
+import { StructuralGaps } from './components/StructuralGaps';
 import { Node, corpusNodes as initialCorpusNodes } from './data/corpus';
-import { Network, FileText, Database, Hexagon, ChevronLeft, ChevronRight, Library, Sparkles, Eye } from 'lucide-react';
+import { Network, FileText, Database, Hexagon, ChevronLeft, ChevronRight, Library, Sparkles, Eye, MessageSquare, Link as LinkIcon, AlertTriangle } from 'lucide-react';
 import { cn } from './lib/utils';
 import { motion, LayoutGroup } from 'motion/react';
 
 export default function App() {
   const [nodes, setNodes] = useState<Node[]>(initialCorpusNodes);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
-  const [viewMode, setViewMode] = useState<'graph' | 'document' | 'library' | 'summaries' | 'revelation'>('graph');
+  const [viewMode, setViewMode] = useState<'graph' | 'document' | 'library' | 'summaries' | 'revelation' | 'gaps'>('graph');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isChatCollapsed, setIsChatCollapsed] = useState(false);
   const [isDbPanelOpen, setIsDbPanelOpen] = useState(false);
   const [lastSync, setLastSync] = useState(new Date().toLocaleTimeString());
+  const [rightSidebarMode, setRightSidebarMode] = useState<'chat' | 'related'>('chat');
 
   const handleNodeSelect = useCallback((node: Node) => {
     setSelectedNode(node);
-    if (node.content) {
+    if (node.blocks && node.blocks.length > 0) {
       setViewMode('document');
     }
+    // Auto-switch to related voids if a node is selected? Maybe not, let user decide.
   }, []);
 
   const addNode = useCallback(async (node: Node) => {
@@ -132,6 +137,16 @@ export default function App() {
                   <Eye className="w-5 h-5" strokeWidth={1.5} />
                 </button>
                 <button 
+                  onClick={() => setViewMode('gaps')}
+                  className={cn(
+                    "w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer",
+                    viewMode === 'gaps' ? "neo-pressed text-orange-400" : "neo-convex text-zinc-500 hover:text-zinc-300"
+                  )}
+                  title="Structural Gap Analysis"
+                >
+                  <AlertTriangle className="w-5 h-5" strokeWidth={1.5} />
+                </button>
+                <button 
                   onClick={() => setIsDbPanelOpen(true)}
                   className={cn(
                     "w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer relative",
@@ -183,12 +198,17 @@ export default function App() {
             />
           ) : viewMode === 'revelation' ? (
             <RevelationDigest />
+          ) : viewMode === 'gaps' ? (
+            <StructuralGaps 
+              nodes={nodes}
+              onNodeSelect={handleNodeSelect}
+            />
           ) : (
             selectedNode && <DocumentViewer node={selectedNode} />
           )}
         </motion.div>
 
-        {/* Right Sidebar - Chatbot */}
+        {/* Right Sidebar - Chatbot & Related */}
         <motion.div 
           layout
           animate={{ width: isChatCollapsed ? '16px' : '47%' }}
@@ -207,13 +227,43 @@ export default function App() {
             )}
           </button>
 
-          <div className="w-full h-full neo-flat border-l-0 overflow-hidden">
+          <div className="w-full h-full neo-flat border-l-0 overflow-hidden flex flex-col">
             <motion.div 
               animate={{ opacity: isChatCollapsed ? 0 : 1 }}
               transition={{ duration: 0.2 }}
-              className="w-full h-full min-w-[400px]"
+              className="w-full h-full min-w-[400px] flex flex-col"
             >
-              <Chatbot nodes={nodes} onCollapse={() => setIsChatCollapsed(true)} />
+              {/* Sidebar Tabs */}
+              <div className="flex items-center gap-4 px-6 py-4 border-b border-white/5">
+                <button 
+                  onClick={() => setRightSidebarMode('chat')}
+                  className={cn(
+                    "flex items-center gap-2 text-xs uppercase tracking-widest transition-colors",
+                    rightSidebarMode === 'chat' ? "text-orange-500 font-bold" : "text-zinc-600 hover:text-zinc-400"
+                  )}
+                >
+                  <MessageSquare className="w-3 h-3" />
+                  Chat
+                </button>
+                <button 
+                  onClick={() => setRightSidebarMode('related')}
+                  className={cn(
+                    "flex items-center gap-2 text-xs uppercase tracking-widest transition-colors",
+                    rightSidebarMode === 'related' ? "text-orange-500 font-bold" : "text-zinc-600 hover:text-zinc-400"
+                  )}
+                >
+                  <LinkIcon className="w-3 h-3" />
+                  Related Voids
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-hidden relative">
+                {rightSidebarMode === 'chat' ? (
+                  <Chatbot nodes={nodes} onCollapse={() => setIsChatCollapsed(true)} />
+                ) : (
+                  <RelatedVoids nodeId={selectedNode?.id} onSelect={handleNodeSelect} />
+                )}
+              </div>
             </motion.div>
           </div>
         </motion.div>

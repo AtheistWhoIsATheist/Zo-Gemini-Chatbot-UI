@@ -4,4 +4,5 @@ export interface KnowledgeDocument {
     content: string;
     uploadDate: number;
     tags?: string[];
+    embedding?: number[];
 }

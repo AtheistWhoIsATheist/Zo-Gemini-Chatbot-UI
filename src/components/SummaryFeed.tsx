@@ -3,10 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+
 import { motion } from 'motion/react';
 import { corpusNodes, Node } from '../data/corpus';
 import { Quote, Sparkles, HelpCircle, ChevronRight, CheckCircle2 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { blocksToString } from '../utils/voidUtils';
 
 interface SummaryFeedProps {
   nodes: Node[];
@@ -55,7 +57,7 @@ export function SummaryFeed({ nodes, onNodeSelect, selectedNodeId }: SummaryFeed
 
             <h3 className="text-xl font-serif text-zinc-100 mb-4 leading-snug">{summary.label}</h3>
             <div className="prose prose-invert prose-sm max-w-none text-zinc-400 leading-relaxed mb-6">
-              {summary.content}
+              {blocksToString(summary.blocks)}
             </div>
 
             <div className="flex items-center justify-between pt-6 border-t border-white/[0.02]">
@@ -99,7 +101,7 @@ export function SummaryFeed({ nodes, onNodeSelect, selectedNodeId }: SummaryFeed
                 <span className="text-[9px] font-mono text-zinc-600 uppercase tracking-widest">Question</span>
               </div>
               <h4 className="text-lg font-serif text-zinc-200 mb-2 group-hover:text-zinc-100 transition-colors">{q.label}</h4>
-              <p className="text-xs text-zinc-500 leading-relaxed">{q.content}</p>
+              <p className="text-xs text-zinc-500 leading-relaxed">{blocksToString(q.blocks)}</p>
               
               <div className="mt-6 flex items-center gap-2">
                 <div className="flex -space-x-2">

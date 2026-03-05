@@ -3,13 +3,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import cron from 'node-cron';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import { densificationPrompt } from './src/backend/ai-prompts';
-import { corpusNodes } from './src/data/corpus';
+import { corpusNodes, Node, VoidBlock } from './src/data/corpus';
+import { blocksToString } from './src/utils/voidUtils';
 
 dotenv.config();
 
@@ -17,8 +19,36 @@ const PORT = 3000;
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
 // In-memory state for the preview (simulating the DB)
-let dbNodes = [...corpusNodes];
+let dbNodes: Node[] = [...corpusNodes];
 let weeklyDigest = '';
+
+// Vector Store (In-memory for preview)
+const vectorStore = new Map<string, number[]>();
+
+// Helper: Calculate Cosine Similarity
+function cosineSimilarity(vecA: number[], vecB: number[]) {
+  const dotProduct = vecA.reduce((acc, val, i) => acc + val * vecB[i], 0);
+  const magA = Math.sqrt(vecA.reduce((acc, val) => acc + val * val, 0));
+  const magB = Math.sqrt(vecB.reduce((acc, val) => acc + val * val, 0));
+  return dotProduct / (magA * magB);
+}
+
+// Helper: Generate Embedding
+async function generateEmbedding(text: string): Promise<number[] | null> {
+  if (!process.env.GEMINI_API_KEY) return null;
+  try {
+
+    const result = await ai.models.embedContent({
+      model: 'text-embedding-004',
+      contents: text,
+    });
+
+    return result.embeddings?.[0]?.values || null;
+  } catch (e) {
+    console.error("Embedding failed:", e);
+    return null;
+  }
+}
 
 async function startServer() {
   const app = express();
@@ -34,13 +64,95 @@ async function startServer() {
     res.json(dbNodes);
   });
 
-  app.post('/api/nodes', (req, res) => {
-    const newNode = req.body;
+  app.post('/api/nodes', async (req, res) => {
+    const newNode = req.body as Node;
     if (!newNode || !newNode.id || !newNode.label) {
       return res.status(400).json({ error: 'Invalid node data' });
     }
     dbNodes.push(newNode);
+
+    // Trigger Embedding
+    const text = blocksToString(newNode.blocks);
+    const embedding = await generateEmbedding(text);
+    if (embedding) {
+      vectorStore.set(newNode.id, embedding);
+    }
+
     res.json({ status: 'success', node: newNode });
+  });
+
+  // PATCH: Update Node Blocks (Debounced Sync)
+  app.patch('/api/nodes/:id', async (req, res) => {
+    const { id } = req.params;
+    const { blocks } = req.body as { blocks: VoidBlock[] };
+
+    const nodeIndex = dbNodes.findIndex(n => n.id === id);
+    if (nodeIndex === -1) {
+      return res.status(404).json({ error: 'Node not found' });
+    }
+
+    // Update Node
+    dbNodes[nodeIndex] = {
+      ...dbNodes[nodeIndex],
+      blocks: blocks,
+      metadata: {
+        ...dbNodes[nodeIndex].metadata,
+        last_audited_date: new Date().toISOString()
+      }
+    };
+
+    // Trigger Embedding (Async - don't block response)
+    const text = blocksToString(blocks);
+    generateEmbedding(text).then(embedding => {
+      if (embedding) {
+        vectorStore.set(id, embedding);
+        console.log(`[VECTOR] Updated embedding for ${id}`);
+      }
+    });
+
+    res.json({ status: 'success', node: dbNodes[nodeIndex] });
+  });
+
+  // GET: Related Voids (Vector Search)
+  app.get('/api/vector/related/:id', (req, res) => {
+    const { id } = req.params;
+    const targetEmbedding = vectorStore.get(id);
+
+    if (!targetEmbedding) {
+      return res.json([]); // No embedding found yet
+    }
+
+    const similarities = dbNodes
+      .filter(n => n.id !== id)
+      .map(n => {
+        const emb = vectorStore.get(n.id);
+        if (!emb) return { node: n, score: -1 };
+        return { node: n, score: cosineSimilarity(targetEmbedding, emb) };
+      })
+      .filter(item => item.score > 0.5) // Threshold
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5)
+      .map(item => item.node);
+
+    res.json(similarities);
+  });
+
+  // POST: Re-index all nodes (Manual Trigger)
+  app.post('/api/reindex', async (req, res) => {
+    console.log('[VECTOR] Starting full re-index...');
+    let count = 0;
+    for (const node of dbNodes) {
+      const text = blocksToString(node.blocks);
+      if (text) {
+        const embedding = await generateEmbedding(text);
+        if (embedding) {
+          vectorStore.set(node.id, embedding);
+          count++;
+        }
+      }
+    }
+    console.log(`[VECTOR] Re-indexed ${count} nodes.`);
+    res.json({ status: 'success', count });
   });
 
   app.get('/api/digest', (req, res) => {
@@ -50,7 +162,6 @@ async function startServer() {
   // --- CRON JOBS ---
 
   // 1. The Nightly Transmutation (Runs at 03:00 AM)
-  // For testing purposes in this preview, we'll also expose it as an endpoint
   const runDensification = async () => {
     console.log('[CRON] Starting Nightly Transmutation...');
     
@@ -83,9 +194,11 @@ async function startServer() {
            continue;
         }
 
+        const targetContent = blocksToString(target.blocks);
+
         const response = await ai.models.generateContent({
           model: 'gemini-3.1-pro-preview',
-          contents: `${densificationPrompt}\n\nTARGET NODE CONTENT:\n${target.content || target.label}`
+          contents: `${densificationPrompt}\n\nTARGET NODE CONTENT:\n${targetContent || target.label}`
         });
 
         const newContent = response.text || '';
@@ -93,9 +206,18 @@ async function startServer() {
         // Update the node in our "DB"
         const nodeIndex = dbNodes.findIndex(n => n.id === target.id);
         if (nodeIndex !== -1) {
+          // For densification, we might append a new block or update the existing text block.
+          // For simplicity, we'll append a "Densification" block.
+          const newBlock: VoidBlock = {
+            id: `densified_${Date.now()}`,
+            type: 'text',
+            content: `\n\n--- DENSIFICATION ---\n${newContent}`,
+            metadata: { lastEdited: Date.now() }
+          };
+
           dbNodes[nodeIndex] = {
             ...dbNodes[nodeIndex],
-            content: newContent,
+            blocks: [...dbNodes[nodeIndex].blocks, newBlock],
             metadata: {
               ...dbNodes[nodeIndex].metadata,
               saturation_level: 100,

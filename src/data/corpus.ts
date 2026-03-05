@@ -7,11 +7,24 @@ export type NodeType = 'treatise' | 'journal' | 'thinker' | 'concept' | 'fragmen
 
 export type NodeStatus = 'VERIFIED' | 'INFERENCE' | 'HYPOTHESIS' | 'UNKNOWN' | 'RAW';
 
+
+export interface VoidBlock {
+  id: string;
+  type: 'text' | 'code' | 'heading' | 'todo';
+  content: string;
+  metadata?: {
+    lastEdited?: number;
+    sentiment?: string;
+    checked?: boolean;
+    language?: string;
+  };
+}
+
 export interface Node {
   id: string;
   label: string;
   type: NodeType;
-  content?: string;
+  blocks: VoidBlock[]; // Replaced content string with blocks array
   status?: NodeStatus;
   confidence?: number; // 0.0 to 1.0
   evidence_quote_ids?: string[];
@@ -25,6 +38,7 @@ export interface Node {
     saturation_level?: number;
     revision_count?: number;
     aporia_state?: 'Active' | 'Synthesized' | 'Terminal';
+    embedding?: number[];
   };
 }
 
@@ -35,6 +49,13 @@ export interface Link {
   type?: 'explores' | 'culminates' | 'documents' | 'triggers' | 'confronts' | 'paradox' | 'objection';
 }
 
+const createBlock = (content: string): VoidBlock => ({
+  id: `blk_${Math.random().toString(36).substr(2, 9)}`,
+  type: 'text',
+  content,
+  metadata: { lastEdited: Date.now(), sentiment: 'neutral' }
+});
+
 export const corpusNodes: Node[] = [
   { 
     id: 'ren', 
@@ -42,7 +63,7 @@ export const corpusNodes: Node[] = [
     type: 'treatise', 
     status: 'VERIFIED',
     confidence: 1.0,
-    content: '# The Religious Experience of Nihilism\n\nChapter 1: The foundation of nihiltheism lies in the absolute confrontation with the Void. It is not a passive despair, but an active, terrifying encounter with groundlessness. When all structures collapse, what remains is the pure, unmediated presence of nothingness—which, paradoxically, is the only true ground.',
+    blocks: [createBlock('# The Religious Experience of Nihilism\n\nChapter 1: The foundation of nihiltheism lies in the absolute confrontation with the Void. It is not a passive despair, but an active, terrifying encounter with groundlessness. When all structures collapse, what remains is the pure, unmediated presence of nothingness—which, paradoxically, is the only true ground.')],
     metadata: { geometry: 'octagon', chromatic_tag: 'methodology_accent_1' }
   },
   { 
@@ -51,7 +72,7 @@ export const corpusNodes: Node[] = [
     type: 'journal', 
     status: 'VERIFIED',
     confidence: 0.95,
-    content: '# Journal314\n\n*Entry 42:* Today the realization hit again. The collapse of meaning isn\'t the end; it\'s the prerequisite. We spend our lives building scaffolding over the abyss. Nihiltheism is the act of dismantling the scaffolding while standing on it.',
+    blocks: [createBlock('# Journal314\n\n*Entry 42:* Today the realization hit again. The collapse of meaning isn\'t the end; it\'s the prerequisite. We spend our lives building scaffolding over the abyss. Nihiltheism is the act of dismantling the scaffolding while standing on it.')],
     metadata: { geometry: 'hex' }
   },
   { 
@@ -60,7 +81,7 @@ export const corpusNodes: Node[] = [
     type: 'thinker', 
     status: 'VERIFIED',
     confidence: 0.9,
-    content: '# E.M. Cioran\n\nCioran understood the insomnia of the soul. His aphorisms are not mere pessimism; they are a lucid diagnosis of the human condition. He saw the Void, but perhaps stopped short of finding the divine *within* it.',
+    blocks: [createBlock('# E.M. Cioran\n\nCioran understood the insomnia of the soul. His aphorisms are not mere pessimism; they are a lucid diagnosis of the human condition. He saw the Void, but perhaps stopped short of finding the divine *within* it.')],
     metadata: { geometry: 'diamond' }
   },
   { 
@@ -69,7 +90,7 @@ export const corpusNodes: Node[] = [
     type: 'thinker', 
     status: 'VERIFIED',
     confidence: 0.85,
-    content: '# Thomas Ligotti\n\nLigotti\'s horror is ontological. The nightmare is not monsters, but the realization that we are puppets without a puppeteer. This aligns perfectly with the initial stage of the Nihiltheistic realization: the horror of the mechanism.',
+    blocks: [createBlock('# Thomas Ligotti\n\nLigotti\'s horror is ontological. The nightmare is not monsters, but the realization that we are puppets without a puppeteer. This aligns perfectly with the initial stage of the Nihiltheistic realization: the horror of the mechanism.')],
     metadata: { geometry: 'diamond' }
   },
   { 
@@ -78,7 +99,7 @@ export const corpusNodes: Node[] = [
     type: 'thinker', 
     status: 'VERIFIED',
     confidence: 0.8,
-    content: '# Søren Kierkegaard\n\nThe leap of faith. But what if the leap is not into the arms of a loving God, but into the center of the Void itself? The anxiety (Angst) he describes is the dizziness of freedom facing the abyss.',
+    blocks: [createBlock('# Søren Kierkegaard\n\nThe leap of faith. But what if the leap is not into the arms of a loving God, but into the center of the Void itself? The anxiety (Angst) he describes is the dizziness of freedom facing the abyss.')],
     metadata: { geometry: 'diamond' }
   },
   { 
@@ -87,7 +108,7 @@ export const corpusNodes: Node[] = [
     type: 'thinker', 
     status: 'VERIFIED',
     confidence: 0.9,
-    content: '# Nāgārjuna\n\nŚūnyatā (Emptiness). The ultimate truth is that all phenomena are empty of inherent existence. This is the Eastern parallel to the Western Void, but framed not as a tragedy, but as liberation.',
+    blocks: [createBlock('# Nāgārjuna\n\nŚūnyatā (Emptiness). The ultimate truth is that all phenomena are empty of inherent existence. This is the Eastern parallel to the Western Void, but framed not as a tragedy, but as liberation.')],
     metadata: { geometry: 'diamond' }
   },
   { 
@@ -96,7 +117,7 @@ export const corpusNodes: Node[] = [
     type: 'concept', 
     status: 'VERIFIED',
     confidence: 1.0,
-    content: '# The Void\n\nThe central axis of Nihiltheism. It is the absence of inherent meaning, structure, or divine guarantee. It is both the terror that induces spiritual emergency and the canvas for true, unconditioned presence.',
+    blocks: [createBlock('# The Void\n\nThe central axis of Nihiltheism. It is the absence of inherent meaning, structure, or divine guarantee. It is both the terror that induces spiritual emergency and the canvas for true, unconditioned presence.')],
     metadata: { geometry: 'circle', chromatic_tag: 'void_primary' }
   },
   { 
@@ -105,7 +126,7 @@ export const corpusNodes: Node[] = [
     type: 'concept', 
     status: 'INFERENCE',
     confidence: 0.7,
-    content: '# Presence\n\nWhat emerges when the ego\'s desperate grasp for meaning ceases. It is the fullness found only at the very bottom of the Void. A paradoxical state of being where nothing matters, and therefore everything is infinitely precious.',
+    blocks: [createBlock('# Presence\n\nWhat emerges when the ego\'s desperate grasp for meaning ceases. It is the fullness found only at the very bottom of the Void. A paradoxical state of being where nothing matters, and therefore everything is infinitely precious.')],
     metadata: { geometry: 'circle' }
   },
   { 
@@ -114,7 +135,7 @@ export const corpusNodes: Node[] = [
     type: 'experience', 
     status: 'VERIFIED',
     confidence: 0.85,
-    content: '# Spiritual Emergency\n\nThe crisis that occurs when an individual\'s meaning-structures collapse before they are capable of integrating the Void. It can mimic psychosis but is fundamentally an ontological crisis, a birth pang of the Nihiltheistic realization.\n\n**BOUNDARY NOTE**: This is a phenomenological state, not a clinical diagnosis.',
+    blocks: [createBlock('# Spiritual Emergency\n\nThe crisis that occurs when an individual\'s meaning-structures collapse before they are capable of integrating the Void. It can mimic psychosis but is fundamentally an ontological crisis, a birth pang of the Nihiltheistic realization.\n\n**BOUNDARY NOTE**: This is a phenomenological state, not a clinical diagnosis.')],
     metadata: { geometry: 'square' }
   },
   { 
@@ -123,7 +144,7 @@ export const corpusNodes: Node[] = [
     type: 'concept', 
     status: 'VERIFIED',
     confidence: 0.9,
-    content: '# Collapse\n\nThe necessary destruction of false idols. The dismantling of the ego\'s scaffolding.',
+    blocks: [createBlock('# Collapse\n\nThe necessary destruction of false idols. The dismantling of the ego\'s scaffolding.')],
     metadata: { geometry: 'hex' }
   },
   {
@@ -132,7 +153,7 @@ export const corpusNodes: Node[] = [
     type: 'methodology',
     status: 'VERIFIED',
     confidence: 1.0,
-    content: '# ANPES (Advanced Nihiltheistic Prompt Engineering System)\n\nThe meta-cognitive engine that transforms Nihiltheistic philosophy into executable protocols. It maintains paradox without collapse.',
+    blocks: [createBlock('# ANPES (Advanced Nihiltheistic Prompt Engineering System)\n\nThe meta-cognitive engine that transforms Nihiltheistic philosophy into executable protocols. It maintains paradox without collapse.')],
     metadata: { geometry: 'octagon', chromatic_tag: 'methodology_accent_2' }
   },
   // --- NEW KNOWLEDGE CURATOR ENGINE DATA ---
@@ -141,7 +162,7 @@ export const corpusNodes: Node[] = [
     label: 'The Architecture of Absence',
     type: 'library_item',
     status: 'RAW',
-    content: 'A deep-dive video essay exploring the spatial representation of the Void in modern architecture.',
+    blocks: [createBlock('A deep-dive video essay exploring the spatial representation of the Void in modern architecture.')],
     metadata: { url: 'https://example.com/void-arch', tags: ['architecture', 'void', 'spatiality'], date_added: '2026-02-28', geometry: 'square' }
   },
   {
@@ -150,7 +171,7 @@ export const corpusNodes: Node[] = [
     type: 'summary',
     status: 'INFERENCE',
     confidence: 0.8,
-    content: 'The spatial void is not an empty room, but a room that *contains* emptiness as a structural member. Architecture becomes the frame for the unframeable.',
+    blocks: [createBlock('The spatial void is not an empty room, but a room that *contains* emptiness as a structural member. Architecture becomes the frame for the unframeable.')],
     evidence_quote_ids: ['lib_001'],
     metadata: { tags: ['transcendent', 'framing'], geometry: 'hex' }
   },
@@ -159,7 +180,7 @@ export const corpusNodes: Node[] = [
     label: 'Can the Void be inhabited?',
     type: 'question',
     status: 'HYPOTHESIS',
-    content: 'If the Void is the only true ground, does habitation imply a re-imposition of scaffolding, or a new mode of groundless being?',
+    blocks: [createBlock('If the Void is the only true ground, does habitation imply a re-imposition of scaffolding, or a new mode of groundless being?')],
     metadata: { tags: ['habitation', 'ontology'], geometry: 'diamond' }
   }
 ];

@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+
 import { useState, useRef, useEffect } from 'react';
 import Markdown from 'react-markdown';
 import { Send, Loader2, ChevronRight, Search, Pin, Download, Settings, AlertTriangle } from 'lucide-react';
@@ -11,6 +12,7 @@ import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { streamChatResponse } from '../services/geminiService';
 import { KnowledgeDocument } from '../types';
+import { blocksToString } from '../utils/voidUtils';
 
 interface Message {
   role: 'user' | 'model' | 'system';
@@ -56,12 +58,14 @@ export function Chatbot({ nodes, onCollapse }: ChatbotProps) {
         parts: [{ text: m.text }]
       }));
       
+
       const knowledgeDocs = nodes.map(n => ({
         id: n.id,
         title: n.label,
-        content: n.content || n.label,
+        content: blocksToString(n.blocks) || n.label,
         uploadDate: n.metadata?.date_added ? new Date(n.metadata.date_added).getTime() : 0,
-        tags: n.metadata?.tags || []
+        tags: n.metadata?.tags || [],
+        embedding: n.metadata?.embedding
       }));
 
       setMessages(prev => [...prev, { role: 'model', text: '' }]);

@@ -3,12 +3,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Node } from '../data/corpus';
+import { Node, VoidBlock } from '../data/corpus';
 import { File, Video, Link as LinkIcon, Plus, Search, X, Download, AlertCircle, CheckCircle2, FileText, FileJson, FileType } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { exportEngine, ExportFormat } from '../utils/exportEngine';
+import { VoidEditor } from './VoidEditor';
+import { blocksToString, migrateContentToBlocks } from '../utils/voidUtils';
 
 interface LibraryBrowserProps {
   nodes: Node[];
@@ -23,7 +26,9 @@ export function LibraryBrowser({ nodes, addNode, onNodeSelect, selectedNodeId }:
   
   // Form State
   const [newLabel, setNewLabel] = useState('');
-  const [newContent, setNewContent] = useState('');
+  const [newBlocks, setNewBlocks] = useState<VoidBlock[]>([
+    { id: 'init_block', type: 'text', content: '', metadata: { lastEdited: Date.now() } }
+  ]);
   const [newUrl, setNewUrl] = useState('');
   const [newTags, setNewTags] = useState('');
   const [sourceType, setSourceType] = useState<'article' | 'video' | 'tweet' | 'paper'>('article');
@@ -43,7 +48,7 @@ export function LibraryBrowser({ nodes, addNode, onNodeSelect, selectedNodeId }:
   const validateForm = () => {
     const newErrors: {label?: string; content?: string} = {};
     if (!newLabel.trim()) newErrors.label = "Title is required to anchor the node.";
-    if (!newContent.trim()) newErrors.content = "Content cannot be void (yet).";
+    if (newBlocks.every(b => !b.content.trim())) newErrors.content = "Content cannot be void (yet).";
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -56,7 +61,7 @@ export function LibraryBrowser({ nodes, addNode, onNodeSelect, selectedNodeId }:
       label: newLabel,
       type: 'library_item',
       status: 'RAW',
-      content: newContent,
+      blocks: newBlocks,
       metadata: {
         url: newUrl,
         tags: newTags.split(',').map(t => t.trim()).filter(Boolean),
@@ -71,7 +76,7 @@ export function LibraryBrowser({ nodes, addNode, onNodeSelect, selectedNodeId }:
     // Reset & Feedback
     setIsAdding(false);
     setNewLabel('');
-    setNewContent('');
+    setNewBlocks([{ id: `blk_${Date.now()}`, type: 'text', content: '', metadata: { lastEdited: Date.now() } }]);
     setNewUrl('');
     setNewTags('');
     setErrors({});
@@ -80,7 +85,19 @@ export function LibraryBrowser({ nodes, addNode, onNodeSelect, selectedNodeId }:
   };
 
   const handleExport = (format: ExportFormat) => {
-    exportEngine.export(libraryItems, format);
+    // We need to adapt the export engine to handle blocks if it doesn't already
+    // For now, we'll map nodes to a flat structure for the export engine
+    // or assume exportEngine handles it.
+    // The exportEngine likely expects 'content' string.
+    // We should probably update exportEngine or map it here.
+    // Let's map it here for safety.
+    const flatItems = libraryItems.map(item => ({
+      ...item,
+      content: blocksToString(item.blocks)
+    }));
+    // @ts-ignore - ExportEngine expects Node with content string, but we are passing a modified object
+    // Actually, we should update ExportEngine to handle blocks, but for now let's cast.
+    exportEngine.export(flatItems as any, format);
     setIsExporting(false);
   };
 
@@ -189,7 +206,9 @@ export function LibraryBrowser({ nodes, addNode, onNodeSelect, selectedNodeId }:
             </div>
             
             <h3 className="text-lg font-serif text-zinc-200 mb-2 group-hover:text-zinc-100 transition-colors">{item.label}</h3>
-            <p className="text-xs text-zinc-500 line-clamp-2 leading-relaxed mb-4">{item.content}</p>
+            <p className="text-xs text-zinc-500 line-clamp-2 leading-relaxed mb-4">
+              {blocksToString(item.blocks)}
+            </p>
             
             <div className="flex flex-wrap gap-2 mt-auto">
               {item.metadata?.tags?.map((tag, i) => (
@@ -234,9 +253,9 @@ export function LibraryBrowser({ nodes, addNode, onNodeSelect, selectedNodeId }:
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] neo-flat border border-white/10 rounded-3xl p-8 z-50 shadow-2xl"
+              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[80vh] neo-flat border border-white/10 rounded-3xl p-8 z-50 shadow-2xl flex flex-col"
             >
-              <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center justify-between mb-6 shrink-0">
                 <h3 className="text-xl font-serif text-zinc-100">Ingest New Data</h3>
                 <button 
                   onClick={() => setIsAdding(false)}
@@ -246,7 +265,7 @@ export function LibraryBrowser({ nodes, addNode, onNodeSelect, selectedNodeId }:
                 </button>
               </div>
 
-              <div className="space-y-4">
+              <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4 pr-2">
                 <div>
                   <label className="text-[10px] uppercase tracking-widest text-zinc-500 font-mono mb-1.5 block">Title / Label *</label>
                   <input 
@@ -287,18 +306,15 @@ export function LibraryBrowser({ nodes, addNode, onNodeSelect, selectedNodeId }:
                   </div>
                 </div>
 
-                <div>
-                  <label className="text-[10px] uppercase tracking-widest text-zinc-500 font-mono mb-1.5 block">Content / Abstract *</label>
-                  <textarea 
-                    value={newContent}
-                    onChange={(e) => setNewContent(e.target.value)}
-                    rows={4}
-                    className={cn(
-                      "w-full neo-pressed rounded-xl px-4 py-3 text-sm text-zinc-200 placeholder:text-zinc-700 focus:outline-none focus:ring-1 transition-all resize-none",
-                      errors.content ? "ring-1 ring-red-500/50" : "focus:ring-orange-500/50"
-                    )}
-                    placeholder="Describe the essence of this data..."
-                  />
+                <div className="flex-1 flex flex-col min-h-[300px]">
+                  <label className="text-[10px] uppercase tracking-widest text-zinc-500 font-mono mb-1.5 block">Content Blocks *</label>
+                  <div className="flex-1 neo-pressed rounded-xl p-4 border border-white/5">
+                    <VoidEditor 
+                      initialBlocks={newBlocks} 
+                      nodes={nodes} 
+                      onChange={setNewBlocks} 
+                    />
+                  </div>
                   {errors.content && (
                     <div className="flex items-center gap-1 mt-1 text-red-500 text-[10px]">
                       <AlertCircle className="w-3 h-3" />
@@ -328,15 +344,15 @@ export function LibraryBrowser({ nodes, addNode, onNodeSelect, selectedNodeId }:
                     placeholder="void, architecture, silence"
                   />
                 </div>
+              </div>
 
-                <div className="pt-4 flex justify-end">
-                  <button 
-                    onClick={handleAdd}
-                    className="px-6 py-2 rounded-xl bg-orange-500 text-black font-medium text-sm hover:bg-orange-400 transition-colors shadow-[0_0_20px_rgba(249,115,22,0.3)]"
-                  >
-                    Ingest into Void
-                  </button>
-                </div>
+              <div className="pt-4 flex justify-end shrink-0 border-t border-white/5 mt-4">
+                <button 
+                  onClick={handleAdd}
+                  className="px-6 py-2 rounded-xl bg-orange-500 text-black font-medium text-sm hover:bg-orange-400 transition-colors shadow-[0_0_20px_rgba(249,115,22,0.3)]"
+                >
+                  Ingest into Void
+                </button>
               </div>
             </motion.div>
           </>
