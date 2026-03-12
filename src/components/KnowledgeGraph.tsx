@@ -5,7 +5,7 @@ import { cn } from '../lib/utils';
 import { 
   Maximize, RotateCcw, ZoomIn, ShieldAlert, CheckCircle2, 
   HelpCircle, Activity, Sparkles, Network, BrainCircuit, 
-  Filter, Layers, X, Atom, Search, Zap 
+  Filter, Layers, X, Atom, Search, Zap, Link2Off, SlidersHorizontal
 } from 'lucide-react';
 import { useGraphLayout } from '../hooks/useGraphLayout';
 import { blocksToString } from '../utils/voidUtils';
@@ -24,6 +24,8 @@ const NODE_COLORS: Record<NodeType, string> = {
   library_item: '#64748b', // Slate-500
   summary: '#14b8a6',  // Teal-500
   question: '#f43f5e', // Rose-500
+  praxis: '#84cc16',   // Lime-500
+  axiom: '#d946ef',    // Fuchsia-500
 };
 
 // --- COMPONENT ---
@@ -32,6 +34,9 @@ export function KnowledgeGraph({ nodes, onNodeSelect, selectedNodeId }: { nodes:
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 1200, height: 800 });
   const [clusterMode, setClusterMode] = useState(false);
+  const [showLatent, setShowLatent] = useState(false);
+  const [gravity, setGravity] = useState(50);
+  const [searchQuery, setSearchQuery] = useState('');
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [expandedNodeId, setExpandedNodeId] = useState<string | null>(null);
   
@@ -46,6 +51,7 @@ export function KnowledgeGraph({ nodes, onNodeSelect, selectedNodeId }: { nodes:
     width: dimensions.width,
     height: dimensions.height,
     clusterMode,
+    gravity,
     activeFilters: { types: activeTypes, statuses: activeStatuses }
   });
 
@@ -61,12 +67,51 @@ export function KnowledgeGraph({ nodes, onNodeSelect, selectedNodeId }: { nodes:
     return () => observer.disconnect();
   }, []);
 
+  // --- LATENT SYNAPSES LOGIC ---
+  const latentLinksBase = useMemo(() => {
+    const lLinks: { sourceId: string; targetId: string; reason: string }[] = [];
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const n1 = nodes[i];
+        const n2 = nodes[j];
+        const isLinked = corpusLinks.some(l => 
+          (typeof l.source === 'string' ? l.source === n1.id : (l.source as any).id === n1.id) && 
+          (typeof l.target === 'string' ? l.target === n2.id : (l.target as any).id === n2.id) ||
+          (typeof l.source === 'string' ? l.source === n2.id : (l.source as any).id === n2.id) && 
+          (typeof l.target === 'string' ? l.target === n1.id : (l.target as any).id === n1.id)
+        );
+        if (!isLinked) {
+          const tags1 = n1.metadata?.tags || [];
+          const tags2 = n2.metadata?.tags || [];
+          const sharedTags = tags1.filter(t => tags2.includes(t));
+          if (sharedTags.length >= 2) {
+            lLinks.push({ sourceId: n1.id, targetId: n2.id, reason: sharedTags.join(', ') });
+          }
+        }
+      }
+    }
+    return lLinks;
+  }, [nodes]);
+
+  const activeLatentLinks = useMemo(() => {
+    if (!showLatent) return [];
+    return latentLinksBase.map(ll => {
+      const source = layoutNodes.find(n => n.id === ll.sourceId);
+      const target = layoutNodes.find(n => n.id === ll.targetId);
+      if (source && target) return { source, target, reason: ll.reason };
+      return null;
+    }).filter(Boolean) as { source: any; target: any; reason: string }[];
+  }, [showLatent, latentLinksBase, layoutNodes]);
+
   // --- INSIGHT GENERATOR LOGIC ---
   const getInsights = (nodeId: string) => {
     const node = nodes.find(n => n.id === nodeId);
     if (!node) return null;
     
-    const connectedLinks = corpusLinks.filter(l => l.source === nodeId || l.target === nodeId);
+    const connectedLinks = corpusLinks.filter(l => 
+      (typeof l.source === 'string' ? l.source === nodeId : (l.source as any).id === nodeId) || 
+      (typeof l.target === 'string' ? l.target === nodeId : (l.target as any).id === nodeId)
+    );
     const degree = connectedLinks.length;
     
     let suggestion = null;
@@ -93,6 +138,24 @@ export function KnowledgeGraph({ nodes, onNodeSelect, selectedNodeId }: { nodes:
       
       {/* --- TOOLBAR (TOP LEFT) --- */}
       <div className="absolute top-6 left-6 z-40 flex flex-col gap-4 pointer-events-none">
+        
+        {/* Scented Search */}
+        <div className="pointer-events-auto bg-black/40 backdrop-blur-md border border-white/10 p-2 rounded-2xl shadow-xl w-64 flex items-center gap-2">
+          <Search className="w-4 h-4 text-zinc-400 ml-2" />
+          <input 
+            type="text" 
+            placeholder="Scented Search..." 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="bg-transparent border-none outline-none text-sm text-zinc-200 placeholder:text-zinc-600 w-full"
+          />
+          {searchQuery && (
+            <button onClick={() => setSearchQuery('')} className="p-1 hover:bg-white/10 rounded-full">
+              <X className="w-3 h-3 text-zinc-400" />
+            </button>
+          )}
+        </div>
+
         {/* Filter Group */}
         <div className="pointer-events-auto bg-black/40 backdrop-blur-md border border-white/10 p-4 rounded-2xl shadow-xl w-64">
           <div className="flex items-center gap-2 mb-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
@@ -101,7 +164,7 @@ export function KnowledgeGraph({ nodes, onNodeSelect, selectedNodeId }: { nodes:
           
           {/* Type Filters */}
           <div className="flex flex-wrap gap-1.5 mb-3">
-            {['concept', 'thinker', 'treatise', 'question'].map(type => (
+            {['concept', 'thinker', 'treatise', 'question', 'axiom', 'praxis'].map(type => (
               <button
                 key={type}
                 onClick={() => {
@@ -144,8 +207,8 @@ export function KnowledgeGraph({ nodes, onNodeSelect, selectedNodeId }: { nodes:
           </div>
         </div>
 
-        {/* Cluster Mode Toggle */}
-        <div className="pointer-events-auto">
+        {/* Action Toggles */}
+        <div className="pointer-events-auto flex flex-col gap-2">
           <button
             onClick={() => setClusterMode(!clusterMode)}
             className={cn(
@@ -158,6 +221,38 @@ export function KnowledgeGraph({ nodes, onNodeSelect, selectedNodeId }: { nodes:
             <Atom className={cn("w-4 h-4", clusterMode && "animate-spin-slow")} />
             <span className="text-xs uppercase tracking-wider">Cluster Mode</span>
           </button>
+
+          <button
+            onClick={() => setShowLatent(!showLatent)}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-xl border backdrop-blur-md transition-all duration-300 shadow-lg",
+              showLatent 
+                ? "bg-emerald-500 text-black border-emerald-400 font-semibold" 
+                : "bg-black/40 border-white/10 text-zinc-400 hover:bg-white/5"
+            )}
+          >
+            <Link2Off className={cn("w-4 h-4", showLatent && "animate-pulse")} />
+            <span className="text-xs uppercase tracking-wider">Latent Synapses</span>
+          </button>
+
+          {/* Gravity Slider */}
+          <div className="bg-black/40 backdrop-blur-md border border-white/10 p-3 rounded-xl shadow-lg flex flex-col gap-2">
+            <div className="flex items-center justify-between text-xs text-zinc-400 uppercase tracking-wider">
+              <div className="flex items-center gap-1.5">
+                <SlidersHorizontal className="w-3 h-3" />
+                <span>Gravity</span>
+              </div>
+              <span>{gravity}%</span>
+            </div>
+            <input 
+              type="range" 
+              min="0" 
+              max="100" 
+              value={gravity} 
+              onChange={(e) => setGravity(parseInt(e.target.value))}
+              className="w-full accent-orange-500 h-1 bg-white/10 rounded-lg appearance-none cursor-pointer"
+            />
+          </div>
         </div>
       </div>
 
@@ -205,8 +300,59 @@ export function KnowledgeGraph({ nodes, onNodeSelect, selectedNodeId }: { nodes:
             <stop offset="0%" stopColor="rgba(255,255,255,0.1)" />
             <stop offset="100%" stopColor="rgba(255,255,255,0.05)" />
           </linearGradient>
+          <linearGradient id="latent-gradient" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="rgba(16, 185, 129, 0.8)" />
+            <stop offset="100%" stopColor="rgba(16, 185, 129, 0.2)" />
+          </linearGradient>
+          <filter id="glow">
+            <feGaussianBlur stdDeviation="2.5" result="coloredBlur"/>
+            <feMerge>
+              <feMergeNode in="coloredBlur"/>
+              <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+          </filter>
         </defs>
         
+        {/* Latent Links */}
+        <AnimatePresence>
+          {showLatent && activeLatentLinks.map((link, i) => {
+            const dx = link.target.x - link.source.x;
+            const dy = link.target.y - link.source.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            
+            const curvature = -0.2;
+            const mx = (link.source.x + link.target.x) / 2;
+            const my = (link.source.y + link.target.y) / 2;
+            const cx = mx - (dy / dist) * (dist * curvature);
+            const cy = my + (dx / dist) * (dist * curvature);
+
+            return (
+              <motion.path
+                key={`latent-${link.source.id}-${link.target.id}`}
+                d={`M ${link.source.x} ${link.source.y} Q ${cx} ${cy} ${link.target.x} ${link.target.y}`}
+                initial={{ pathLength: 0, opacity: 0 }}
+                animate={{ 
+                  pathLength: 1, 
+                  opacity: 0.6,
+                }}
+                exit={{ opacity: 0 }}
+                stroke="url(#latent-gradient)"
+                strokeWidth={2}
+                fill="none"
+                strokeDasharray="6,6"
+                filter="url(#glow)"
+              >
+                <animate 
+                  attributeName="stroke-dashoffset" 
+                  values="100;0" 
+                  dur="3s" 
+                  repeatCount="indefinite" 
+                />
+              </motion.path>
+            );
+          })}
+        </AnimatePresence>
+
         {/* Links */}
         <AnimatePresence>
           {links.map((link, i) => {
@@ -232,11 +378,11 @@ export function KnowledgeGraph({ nodes, onNodeSelect, selectedNodeId }: { nodes:
                 initial={{ pathLength: 0, opacity: 0 }}
                 animate={{ 
                   pathLength: 1, 
-                  opacity: isDimmed ? 0.05 : (isActive ? 0.8 : 0.25),
-                  strokeWidth: isActive ? 2 : 1
+                  opacity: isDimmed ? 0.05 : (isActive ? 0.8 : 0.25)
                 }}
                 exit={{ opacity: 0 }}
                 stroke={isActive ? "#f97316" : "url(#link-gradient)"}
+                strokeWidth={isActive ? 2 : 1}
                 fill="none"
                 strokeDasharray={isActive ? "4,4" : "none"}
                 style={{
@@ -261,7 +407,8 @@ export function KnowledgeGraph({ nodes, onNodeSelect, selectedNodeId }: { nodes:
       <div className="absolute inset-0 pointer-events-none">
         <AnimatePresence>
           {layoutNodes.map((node) => {
-            const isDimmed = hoveredNodeId && hoveredNodeId !== node.id && !links.some(l => (l.source.id === node.id && l.target.id === hoveredNodeId) || (l.target.id === node.id && l.source.id === hoveredNodeId));
+            const matchesSearch = searchQuery && node.label.toLowerCase().includes(searchQuery.toLowerCase());
+            const isDimmed = (searchQuery && !matchesSearch) || (hoveredNodeId && hoveredNodeId !== node.id && !links.some(l => (l.source.id === node.id && l.target.id === hoveredNodeId) || (l.target.id === node.id && l.source.id === hoveredNodeId)));
             const isSelected = selectedNodeId === node.id;
             const color = getNodeColor(node.type);
 
@@ -272,8 +419,8 @@ export function KnowledgeGraph({ nodes, onNodeSelect, selectedNodeId }: { nodes:
                 animate={{ 
                   x: node.x, 
                   y: node.y, 
-                  scale: 1, 
-                  opacity: isDimmed ? 0.2 : 1 
+                  scale: matchesSearch ? 1.2 : 1, 
+                  opacity: isDimmed ? 0.1 : 1 
                 }}
                 exit={{ scale: 0, opacity: 0 }}
                 transition={{ type: "spring", stiffness: 500, damping: 30 }}
@@ -294,15 +441,16 @@ export function KnowledgeGraph({ nodes, onNodeSelect, selectedNodeId }: { nodes:
                   <div 
                     className={cn(
                       "w-4 h-4 rounded-full shadow-[0_0_15px_rgba(0,0,0,0.5)] border-2 transition-all duration-300",
-                      isSelected ? "w-6 h-6 border-white shadow-[0_0_20px_rgba(249,115,22,0.6)]" : "border-white/20 group-hover:border-white/60 group-hover:scale-125"
+                      isSelected ? "w-6 h-6 border-white shadow-[0_0_20px_rgba(249,115,22,0.6)]" : "border-white/20 group-hover:border-white/60 group-hover:scale-125",
+                      matchesSearch && "shadow-[0_0_20px_rgba(255,255,255,0.8)] border-white"
                     )}
-                    style={{ backgroundColor: color, borderColor: isSelected ? '#fff' : undefined }}
+                    style={{ backgroundColor: color, borderColor: isSelected || matchesSearch ? '#fff' : undefined }}
                   />
 
                   {/* Label */}
                   <div className={cn(
                     "absolute top-full mt-2 left-1/2 -translate-x-1/2 whitespace-nowrap px-2 py-1 rounded-md bg-black/60 backdrop-blur-sm border border-white/10 text-[10px] uppercase tracking-wider transition-all duration-300 pointer-events-none",
-                    (hoveredNodeId === node.id || isSelected) 
+                    (hoveredNodeId === node.id || isSelected || matchesSearch) 
                       ? "opacity-100 translate-y-0 text-orange-400 border-orange-500/30" 
                       : (isDimmed ? "opacity-0 -translate-y-1" : "opacity-40 translate-y-0")
                   )}>
@@ -402,3 +550,4 @@ export function KnowledgeGraph({ nodes, onNodeSelect, selectedNodeId }: { nodes:
     </div>
   );
 }
+

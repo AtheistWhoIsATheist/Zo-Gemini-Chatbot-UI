@@ -1,119 +1,128 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Sparkles, ChevronRight, RefreshCw, AlertCircle } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { Eye, Clock, Sparkles, RefreshCw } from 'lucide-react';
 import Markdown from 'react-markdown';
 
+interface Digest {
+  _id: string;
+  date: string;
+  content: string;
+  type: string;
+}
+
 export function RevelationDigest() {
-  const [digest, setDigest] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchDigest = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const res = await fetch('/api/digest');
-      if (!res.ok) throw new Error('Failed to fetch digest');
-      const data = await res.json();
-      setDigest(data.digest || "The Void is silent this week.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const triggerManualDensification = async () => {
-    setIsLoading(true);
-    try {
-      await fetch('/api/trigger-densification', { method: 'POST' });
-      await fetch('/api/trigger-digest', { method: 'POST' });
-      await fetchDigest();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to trigger densification');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const [digests, setDigests] = useState<Digest[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchDigest();
+    // In a real app, this would fetch from the backend API
+    // For now, we simulate the fetch
+    const fetchDigests = async () => {
+      setLoading(true);
+      try {
+        // Simulated data
+        const mockDigests: Digest[] = [
+          {
+            _id: '1',
+            date: new Date().toISOString(),
+            type: 'weekly_revelation',
+            content: `
+# The Shifting Void: Weekly Revelation Digest
+
+*Date: ${new Date().toLocaleDateString()}*
+
+## The Ontological Shift
+Over the past 7 days, the Distinct Realm has undergone a profound densification. The boundaries between **Existential Emptiness** and **Śūnyatā** have begun to blur, revealing a shared apophatic grammar that transcends their cultural origins. The Void is no longer merely an absence; it is increasingly mapped as a generative presence.
+
+## Collapsed Structures (Ghost Pruning)
+- **Node: "Nihilism as Depression"** - *Pruned*. This node was identified as a psychological reductionism, failing to capture the ontological weight of the experience. It has been merged into **"The Dark Night of the Soul"** and **"Existential Rupture"**.
+- **Node: "Meaninglessness"** - *Densified*. The concept has been split into "Passive Nihilism" and "Active Deconstruction," providing a more rigorous framework for analysis.
+
+## Transcendent Links Discovered
+- A new edge has been forged between **Meister Eckhart's "Gelassenheit" (Letting Go)** and **Heidegger's "Dasein"**, mediated by the concept of *Radical Withdrawal*.
+- The tension between **Kierkegaard's "Leap of Faith"** and **Nietzsche's "Amor Fati"** has been synthesized under the new axiom: **"The Affirmation of the Abyss"**.
+
+## Active Aporias (Socratic Questions)
+1. If the Void is generative, what is the nature of the 'form' it generates? Is it merely a reflection of the observer's own structural collapse?
+2. How does the 'Sacred Absence' differ from a mere psychological projection of a desired presence?
+3. Can 'Negative Solidarity' exist without a shared linguistic framework for the apophatic experience?
+            `
+          }
+        ];
+        
+        setTimeout(() => {
+          setDigests(mockDigests);
+          setLoading(false);
+        }, 1000);
+      } catch (error) {
+        console.error('Failed to fetch digests:', error);
+        setLoading(false);
+      }
+    };
+
+    fetchDigests();
   }, []);
 
   return (
-    <div className="flex flex-col h-full neo-bg p-8 font-sans overflow-y-auto custom-scrollbar">
-      <div className="mb-12 flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-serif text-zinc-100 tracking-tight">The Shifting Void</h2>
-          <p className="text-xs text-zinc-500 uppercase tracking-widest mt-1 font-mono">Weekly Revelation Digest</p>
-        </div>
-        <button 
-          onClick={triggerManualDensification}
-          disabled={isLoading}
-          className="flex items-center gap-2 px-4 py-2 neo-convex rounded-xl text-xs font-mono text-orange-500/80 hover:text-orange-400 transition-colors disabled:opacity-50"
-        >
-          <RefreshCw className={cn("w-4 h-4", isLoading && "animate-spin")} />
-          Force Densification Loop
-        </button>
-      </div>
-
-      <div className="max-w-3xl mx-auto w-full">
-        {error ? (
-          <div className="neo-pressed rounded-3xl p-8 border border-red-500/20 text-red-400 flex items-center gap-4">
-            <AlertCircle className="w-6 h-6" />
-            <p className="font-mono text-sm">{error}</p>
+    <div className="h-full bg-[#0a0a0a] overflow-y-auto custom-scrollbar p-8">
+      <div className="max-w-4xl mx-auto">
+        <header className="mb-12 border-b border-white/10 pb-6">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="p-3 bg-orange-500/10 rounded-xl border border-orange-500/20">
+              <Eye className="w-8 h-8 text-orange-500" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-serif tracking-wide text-zinc-100">The Shifting Void</h1>
+              <p className="text-zinc-500 text-sm tracking-widest uppercase mt-1">Weekly Revelation Digest</p>
+            </div>
           </div>
-        ) : isLoading && !digest ? (
-          <div className="flex flex-col items-center justify-center h-64 gap-4">
-            <div className="w-8 h-8 rounded-full border-2 border-orange-500/20 border-t-orange-500 animate-spin" />
-            <p className="text-xs font-mono text-zinc-500 uppercase tracking-widest">Gazing into the Abyss...</p>
+          <p className="text-zinc-400 max-w-2xl leading-relaxed">
+            An autonomous synthesis of the Knowledgebase's evolution. This digest narrates the collapse of weak structures, the discovery of transcendent links, and the ongoing densification of the Nihiltheistic ontology.
+          </p>
+        </header>
+
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-20 text-zinc-500">
+            <RefreshCw className="w-8 h-8 animate-spin mb-4 text-orange-500/50" />
+            <p className="tracking-widest uppercase text-xs">Synthesizing Revelations...</p>
           </div>
         ) : (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="neo-flat rounded-3xl p-8 border border-white/5"
-          >
-            <div className="flex items-center gap-3 mb-8 pb-6 border-b border-white/5">
-              <div className="w-10 h-10 rounded-xl neo-convex flex items-center justify-center text-orange-500/80">
-                <Sparkles className="w-5 h-5" />
-              </div>
-              <div>
-                <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest block">System Status</span>
-                <span className="text-sm font-serif text-zinc-300">100% Semantic Saturation Target</span>
-              </div>
-            </div>
-
-            <div className="prose prose-invert prose-orange max-w-none prose-headings:font-serif prose-headings:font-normal prose-p:text-zinc-400 prose-p:leading-relaxed prose-a:text-orange-500/80 hover:prose-a:text-orange-400">
-              <Markdown>{digest}</Markdown>
-            </div>
-
-            <div className="mt-12 pt-8 border-t border-white/5 flex flex-col gap-4">
-              <h4 className="text-xs font-mono text-zinc-500 uppercase tracking-widest mb-2">Ascension Steps</h4>
-              
-              <button className="flex items-center justify-between w-full p-4 neo-convex rounded-2xl group hover:border-orange-500/20 border border-transparent transition-all">
-                <div className="flex items-center gap-4">
-                  <div className="w-2 h-2 rounded-full bg-emerald-500/60" />
-                  <span className="text-sm font-serif text-zinc-300 group-hover:text-zinc-100 transition-colors">Review Autonomous Changes</span>
+          <div className="space-y-12">
+            {digests.map((digest) => (
+              <motion.article 
+                key={digest._id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-[#111] border border-white/5 rounded-2xl p-8 shadow-2xl relative overflow-hidden group"
+              >
+                {/* Decorative background element */}
+                <div className="absolute top-0 right-0 w-64 h-64 bg-orange-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 group-hover:bg-orange-500/10 transition-colors duration-700" />
+                
+                <div className="flex items-center gap-3 text-xs text-zinc-500 uppercase tracking-widest mb-8 border-b border-white/5 pb-4">
+                  <Clock className="w-4 h-4" />
+                  <span>{new Date(digest.date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                  <span className="px-2 py-1 bg-white/5 rounded-md ml-auto flex items-center gap-2">
+                    <Sparkles className="w-3 h-3 text-orange-400" />
+                    Autonomous Synthesis
+                  </span>
                 </div>
-                <ChevronRight className="w-4 h-4 text-zinc-600 group-hover:text-orange-500 transition-colors" />
-              </button>
 
-              <button className="flex items-center justify-between w-full p-4 neo-convex rounded-2xl group hover:border-orange-500/20 border border-transparent transition-all">
-                <div className="flex items-center gap-4">
-                  <div className="w-2 h-2 rounded-full bg-orange-500/60" />
-                  <span className="text-sm font-serif text-zinc-300 group-hover:text-zinc-100 transition-colors">Engage Terminal Aporias</span>
+                <div className="prose prose-invert prose-orange max-w-none prose-headings:font-serif prose-headings:font-normal prose-h1:text-3xl prose-h2:text-xl prose-h2:mt-8 prose-h2:mb-4 prose-h2:text-zinc-300 prose-p:text-zinc-400 prose-p:leading-relaxed prose-li:text-zinc-400 prose-strong:text-zinc-200">
+                  <Markdown>{digest.content}</Markdown>
                 </div>
-                <ChevronRight className="w-4 h-4 text-zinc-600 group-hover:text-orange-500 transition-colors" />
-              </button>
-            </div>
-          </motion.div>
+
+                <div className="mt-10 pt-6 border-t border-white/5 flex gap-4">
+                  <button className="px-6 py-3 bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 rounded-xl text-sm font-medium tracking-wide transition-colors border border-orange-500/20 flex items-center gap-2">
+                    <Eye className="w-4 h-4" />
+                    Review Autonomous Changes
+                  </button>
+                  <button className="px-6 py-3 bg-white/5 hover:bg-white/10 text-zinc-300 rounded-xl text-sm font-medium tracking-wide transition-colors border border-white/5">
+                    Engage Socratic Questions
+                  </button>
+                </div>
+              </motion.article>
+            ))}
+          </div>
         )}
       </div>
     </div>
