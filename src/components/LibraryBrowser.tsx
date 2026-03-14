@@ -85,19 +85,7 @@ export function LibraryBrowser({ nodes, addNode, onNodeSelect, selectedNodeId }:
   };
 
   const handleExport = (format: ExportFormat) => {
-    // We need to adapt the export engine to handle blocks if it doesn't already
-    // For now, we'll map nodes to a flat structure for the export engine
-    // or assume exportEngine handles it.
-    // The exportEngine likely expects 'content' string.
-    // We should probably update exportEngine or map it here.
-    // Let's map it here for safety.
-    const flatItems = libraryItems.map(item => ({
-      ...item,
-      content: blocksToString(item.blocks)
-    }));
-    // @ts-ignore - ExportEngine expects Node with content string, but we are passing a modified object
-    // Actually, we should update ExportEngine to handle blocks, but for now let's cast.
-    exportEngine.export(flatItems as any, format);
+    exportEngine.export(libraryItems, format);
     setIsExporting(false);
   };
 

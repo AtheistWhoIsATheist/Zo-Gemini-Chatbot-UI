@@ -503,7 +503,7 @@ export const corpusNodes: Node[] = [
     metadata: { geometry: "diamond", tags: ["aporia", "limits"] }
   },
   {
-    id: "mac_alpha",
+    id: "mac_alpha_2",
     label: "MAC_α: Oscillation Mandate",
     type: "axiom",
     status: "VERIFIED",
@@ -516,7 +516,7 @@ export const corpusNodes: Node[] = [
     metadata: { geometry: "square", tags: ["axiom", "oscillation"] }
   },
   {
-    id: "aif",
+    id: "aif_2",
     label: "AIF: Apophatic Inscription Failure",
     type: "axiom",
     status: "VERIFIED",
@@ -529,7 +529,7 @@ export const corpusNodes: Node[] = [
     metadata: { geometry: "square", tags: ["axiom", "apophasis"] }
   },
   {
-    id: "s_100",
+    id: "s_100_2",
     label: "S→100%: Asymptotic Saturation",
     type: "axiom",
     status: "VERIFIED",

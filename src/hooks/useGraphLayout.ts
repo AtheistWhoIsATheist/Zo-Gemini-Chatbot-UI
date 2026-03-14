@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import * as d3 from 'd3';
 import { Node, Link, NodeType } from '../data/corpus';
 
@@ -32,10 +32,20 @@ export function useGraphLayout({ nodes, links, width, height, clusterMode, gravi
   const [graphData, setGraphData] = useState<{ nodes: any[]; links: any[] }>({ nodes: [], links: [] });
   const simulationRef = useRef<d3.Simulation<d3.SimulationNodeDatum, undefined> | null>(null);
   const requestRef = useRef<number | null>(null);
+  const nodesMapRef = useRef<Map<string, any>>(new Map());
 
-  // Filter nodes based on active filters
-  // We memoize the filtered data to prevent unnecessary simulation restarts
-  const getFilteredData = useCallback(() => {
+  // Stringify filters to use as a stable dependency
+  const filterKey = useMemo(() => {
+    return JSON.stringify({
+      types: Array.from(activeFilters.types).sort(),
+      statuses: Array.from(activeFilters.statuses).sort()
+    });
+  }, [activeFilters]);
+
+  useEffect(() => {
+    if (width === 0 || height === 0) return;
+
+    // Filter nodes based on active filters
     const filteredNodes = nodes.filter(n => {
       const typeMatch = activeFilters.types.size === 0 || activeFilters.types.has(n.type);
       const statusMatch = activeFilters.statuses.size === 0 || (n.status && activeFilters.statuses.has(n.status));
@@ -43,17 +53,35 @@ export function useGraphLayout({ nodes, links, width, height, clusterMode, gravi
     });
 
     const nodeIds = new Set(filteredNodes.map(n => n.id));
-    const filteredLinks = links.filter(l => nodeIds.has(l.source) && nodeIds.has(l.target));
+    
+    // Filter and normalize links
+    const filteredLinks = links
+      .filter(l => {
+        const s = typeof l.source === 'string' ? l.source : (l.source as any).id;
+        const t = typeof l.target === 'string' ? l.target : (l.target as any).id;
+        return nodeIds.has(s) && nodeIds.has(t);
+      })
+      .map(l => ({
+        ...l,
+        source: typeof l.source === 'string' ? l.source : (l.source as any).id,
+        target: typeof l.target === 'string' ? l.target : (l.target as any).id
+      }));
 
-    return { nodes: filteredNodes.map(n => ({ ...n })), links: filteredLinks.map(l => ({ ...l })) };
-  }, [nodes, links, activeFilters]);
-
-  useEffect(() => {
-    const { nodes: simNodes, links: simLinks } = getFilteredData();
+    // Preserve positions from previous simulation
+    const simNodes = filteredNodes.map(n => {
+      const existing = nodesMapRef.current.get(n.id);
+      return {
+        ...n,
+        x: existing?.x ?? width / 2 + (Math.random() - 0.5) * 100,
+        y: existing?.y ?? height / 2 + (Math.random() - 0.5) * 100,
+        vx: existing?.vx ?? 0,
+        vy: existing?.vy ?? 0,
+        fx: existing?.fx,
+        fy: existing?.fy
+      };
+    });
 
     // Calculate forces based on gravity (0 to 100)
-    // High gravity = nodes pulled tightly together
-    // Low gravity = nodes spread far apart
     const chargeStrength = clusterMode ? -100 : -300 * (1 - (gravity - 50) / 100);
     const linkDistance = clusterMode ? 50 : 100 * (1 - (gravity - 50) / 100);
     const centerStrength = gravity / 100; // 0 to 1
@@ -61,7 +89,7 @@ export function useGraphLayout({ nodes, links, width, height, clusterMode, gravi
     // Initialize simulation
     const simulation = d3.forceSimulation(simNodes as d3.SimulationNodeDatum[])
       .force('charge', d3.forceManyBody().strength(chargeStrength))
-      .force('link', d3.forceLink(simLinks).id((d: any) => d.id).distance(linkDistance))
+      .force('link', d3.forceLink(filteredLinks).id((d: any) => d.id).distance(linkDistance))
       .force('center', d3.forceCenter(width / 2, height / 2).strength(centerStrength))
       .force('collide', d3.forceCollide().radius(40).iterations(2));
 
@@ -85,19 +113,26 @@ export function useGraphLayout({ nodes, links, width, height, clusterMode, gravi
 
     // Animation loop
     const tick = () => {
-      simulation.tick();
-      setGraphData({ nodes: [...simNodes], links: [...simLinks] });
-      requestRef.current = requestAnimationFrame(tick);
+      // Save current positions to ref
+      simNodes.forEach(n => nodesMapRef.current.set(n.id, n));
+      
+      setGraphData({ nodes: [...simNodes], links: [...filteredLinks] });
+      
+      // Only continue animation if simulation is still active
+      if (simulation.alpha() > 0.01) {
+        requestRef.current = requestAnimationFrame(tick);
+      }
     };
 
     // Start loop
+    if (requestRef.current) cancelAnimationFrame(requestRef.current);
     requestRef.current = requestAnimationFrame(tick);
 
     return () => {
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
       simulation.stop();
     };
-  }, [width, height, clusterMode, gravity, getFilteredData]); // Re-run when these change
+  }, [nodes, links, width, height, clusterMode, gravity, filterKey]); // Use filterKey instead of activeFilters
 
   // Drag handlers
   const drag = (node: any) => {
@@ -108,6 +143,18 @@ export function useGraphLayout({ nodes, links, width, height, clusterMode, gravi
       if (!event.active) simulation.alphaTarget(0.3).restart();
       node.fx = node.x;
       node.fy = node.y;
+      
+      // Restart animation loop if it was stopped
+      if (simulation.alpha() <= 0.01) {
+        const tick = () => {
+          setGraphData(prev => ({ nodes: [...prev.nodes], links: [...prev.links] }));
+          if (simulation.alpha() > 0.01) {
+            requestRef.current = requestAnimationFrame(tick);
+          }
+        };
+        if (requestRef.current) cancelAnimationFrame(requestRef.current);
+        requestRef.current = requestAnimationFrame(tick);
+      }
     };
 
     const onDrag = (event: any) => {

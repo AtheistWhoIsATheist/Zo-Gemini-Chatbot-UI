@@ -1,7 +1,7 @@
 import cron from 'node-cron';
 import { getNodesForDensification, getWeeklyChanges, getNodesCollection, getDigestsCollection } from './db';
 import { densificationPrompt, revelationDigestPrompt } from './ai-prompts';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, Type } from '@google/genai';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -29,7 +29,29 @@ export function startCronJobs() {
           model: 'gemini-3.1-pro-preview',
           contents: prompt,
           config: {
-            responseMimeType: 'application/json'
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                expanded_summary: { type: Type.STRING },
+                socratic_questions: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      text: { type: Type.STRING },
+                      aporia_state: { type: Type.STRING }
+                    },
+                    required: ['text', 'aporia_state']
+                  }
+                },
+                ghost_structures_pruned: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING }
+                }
+              },
+              required: ['expanded_summary', 'socratic_questions', 'ghost_structures_pruned']
+            }
           }
         });
 

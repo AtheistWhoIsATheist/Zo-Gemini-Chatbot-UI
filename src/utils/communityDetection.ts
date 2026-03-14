@@ -9,6 +9,8 @@ export interface Community {
 }
 
 export function detectCommunities(nodes: Node[], links: Link[]): Community[] {
+  if (!nodes || nodes.length === 0) return [];
+
   const nodeIds = nodes.map(n => n.id);
   const edgeData = links.map(l => ({
     source: typeof l.source === 'string' ? l.source : (l.source as any).id,

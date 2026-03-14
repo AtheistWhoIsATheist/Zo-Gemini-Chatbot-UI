@@ -94,3 +94,8 @@ body {
   -moz-osx-font-smoothing: grayscale;
   overflow: hidden;
 }
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}

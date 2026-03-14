@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import * as d3 from 'd3';
 import { corpusNodes, corpusLinks, Node, NodeType, NodeStatus } from '../data/corpus';
 import { cn } from '../lib/utils';
 import { 
@@ -39,6 +40,8 @@ export function KnowledgeGraph({ nodes, onNodeSelect, selectedNodeId }: { nodes:
   const [searchQuery, setSearchQuery] = useState('');
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [expandedNodeId, setExpandedNodeId] = useState<string | null>(null);
+  const [transform, setTransform] = useState({ x: 0, y: 0, k: 1 });
+  const [isToolbarOpen, setIsToolbarOpen] = useState(true);
   
   // Filters
   const [activeTypes, setActiveTypes] = useState<Set<string>>(new Set());
@@ -65,6 +68,46 @@ export function KnowledgeGraph({ nodes, onNodeSelect, selectedNodeId }: { nodes:
     });
     observer.observe(containerRef.current);
     return () => observer.disconnect();
+  }, []);
+
+  // Zoom & Pan Handlers using d3-zoom
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const zoom = d3.zoom<HTMLDivElement, unknown>()
+      .scaleExtent([0.1, 5])
+      .filter((event) => {
+        // Only allow zoom on wheel if ctrlKey is pressed
+        if (event.type === 'wheel') {
+          return event.ctrlKey;
+        }
+        // Allow drag (mousedown) without ctrlKey
+        return event.button === 0 || event.type === 'touchstart';
+      })
+      .on('zoom', (event) => {
+        setTransform({
+          x: event.transform.x,
+          y: event.transform.y,
+          k: event.transform.k
+        });
+      });
+
+    const selection = d3.select(container);
+    selection.call(zoom);
+    
+    // Prevent default wheel behavior when zooming to avoid page scroll
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey) {
+        e.preventDefault();
+      }
+    };
+    container.addEventListener('wheel', handleWheel, { passive: false });
+
+    return () => {
+      selection.on('.zoom', null);
+      container.removeEventListener('wheel', handleWheel);
+    };
   }, []);
 
   // --- LATENT SYNAPSES LOGIC ---
@@ -139,121 +182,143 @@ export function KnowledgeGraph({ nodes, onNodeSelect, selectedNodeId }: { nodes:
       {/* --- TOOLBAR (TOP LEFT) --- */}
       <div className="absolute top-6 left-6 z-40 flex flex-col gap-4 pointer-events-none">
         
-        {/* Scented Search */}
-        <div className="pointer-events-auto bg-black/40 backdrop-blur-md border border-white/10 p-2 rounded-2xl shadow-xl w-64 flex items-center gap-2">
-          <Search className="w-4 h-4 text-zinc-400 ml-2" />
-          <input 
-            type="text" 
-            placeholder="Scented Search..." 
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="bg-transparent border-none outline-none text-sm text-zinc-200 placeholder:text-zinc-600 w-full"
-          />
-          {searchQuery && (
-            <button onClick={() => setSearchQuery('')} className="p-1 hover:bg-white/10 rounded-full">
-              <X className="w-3 h-3 text-zinc-400" />
-            </button>
-          )}
+        {/* Toolbar Toggle */}
+        <div className="pointer-events-auto flex items-center gap-2">
+          <button
+            onClick={() => setIsToolbarOpen(!isToolbarOpen)}
+            className="p-2 bg-black/40 backdrop-blur-md border border-white/10 rounded-xl shadow-xl text-zinc-400 hover:text-orange-500 hover:bg-white/5 transition-colors"
+            title="Toggle Toolbar"
+          >
+            <SlidersHorizontal className="w-4 h-4" />
+          </button>
         </div>
 
-        {/* Filter Group */}
-        <div className="pointer-events-auto bg-black/40 backdrop-blur-md border border-white/10 p-4 rounded-2xl shadow-xl w-64">
-          <div className="flex items-center gap-2 mb-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-            <Filter className="w-3 h-3" /> Filters
-          </div>
-          
-          {/* Type Filters */}
-          <div className="flex flex-wrap gap-1.5 mb-3">
-            {['concept', 'thinker', 'treatise', 'question', 'axiom', 'praxis'].map(type => (
-              <button
-                key={type}
-                onClick={() => {
-                  const next = new Set(activeTypes);
-                  next.has(type) ? next.delete(type) : next.add(type);
-                  setActiveTypes(next);
-                }}
-                className={cn(
-                  "text-[10px] uppercase px-2.5 py-1 rounded-full border transition-all duration-300",
-                  activeTypes.has(type) 
-                    ? "bg-orange-500/20 border-orange-500 text-orange-400 shadow-[0_0_10px_rgba(249,115,22,0.2)]" 
-                    : "bg-zinc-900/50 border-white/5 text-zinc-500 hover:border-white/20"
+        <AnimatePresence>
+          {isToolbarOpen && (
+            <motion.div 
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="flex flex-col gap-4"
+            >
+              {/* Scented Search */}
+              <div className="pointer-events-auto bg-black/40 backdrop-blur-md border border-white/10 p-2 rounded-2xl shadow-xl w-64 flex items-center gap-2">
+                <Search className="w-4 h-4 text-zinc-400 ml-2" />
+                <input 
+                  type="text" 
+                  placeholder="Scented Search..." 
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="bg-transparent border-none outline-none text-sm text-zinc-200 placeholder:text-zinc-600 w-full"
+                />
+                {searchQuery && (
+                  <button onClick={() => setSearchQuery('')} className="p-1 hover:bg-white/10 rounded-full">
+                    <X className="w-3 h-3 text-zinc-400" />
+                  </button>
                 )}
-              >
-                {type}
-              </button>
-            ))}
-          </div>
-
-          {/* Status Filters */}
-          <div className="flex flex-wrap gap-1.5 border-t border-white/5 pt-3">
-            {['VERIFIED', 'INFERENCE', 'HYPOTHESIS'].map(status => (
-              <button
-                key={status}
-                onClick={() => {
-                  const next = new Set(activeStatuses);
-                  next.has(status) ? next.delete(status) : next.add(status);
-                  setActiveStatuses(next);
-                }}
-                className={cn(
-                  "text-[10px] uppercase px-2.5 py-1 rounded-full border transition-all duration-300",
-                  activeStatuses.has(status)
-                    ? "bg-blue-500/20 border-blue-500 text-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.2)]"
-                    : "bg-zinc-900/50 border-white/5 text-zinc-500 hover:border-white/20"
-                )}
-              >
-                {status}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Action Toggles */}
-        <div className="pointer-events-auto flex flex-col gap-2">
-          <button
-            onClick={() => setClusterMode(!clusterMode)}
-            className={cn(
-              "flex items-center gap-2 px-4 py-2 rounded-xl border backdrop-blur-md transition-all duration-300 shadow-lg",
-              clusterMode 
-                ? "bg-orange-500 text-black border-orange-400 font-semibold" 
-                : "bg-black/40 border-white/10 text-zinc-400 hover:bg-white/5"
-            )}
-          >
-            <Atom className={cn("w-4 h-4", clusterMode && "animate-spin-slow")} />
-            <span className="text-xs uppercase tracking-wider">Cluster Mode</span>
-          </button>
-
-          <button
-            onClick={() => setShowLatent(!showLatent)}
-            className={cn(
-              "flex items-center gap-2 px-4 py-2 rounded-xl border backdrop-blur-md transition-all duration-300 shadow-lg",
-              showLatent 
-                ? "bg-emerald-500 text-black border-emerald-400 font-semibold" 
-                : "bg-black/40 border-white/10 text-zinc-400 hover:bg-white/5"
-            )}
-          >
-            <Link2Off className={cn("w-4 h-4", showLatent && "animate-pulse")} />
-            <span className="text-xs uppercase tracking-wider">Latent Synapses</span>
-          </button>
-
-          {/* Gravity Slider */}
-          <div className="bg-black/40 backdrop-blur-md border border-white/10 p-3 rounded-xl shadow-lg flex flex-col gap-2">
-            <div className="flex items-center justify-between text-xs text-zinc-400 uppercase tracking-wider">
-              <div className="flex items-center gap-1.5">
-                <SlidersHorizontal className="w-3 h-3" />
-                <span>Gravity</span>
               </div>
-              <span>{gravity}%</span>
-            </div>
-            <input 
-              type="range" 
-              min="0" 
-              max="100" 
-              value={gravity} 
-              onChange={(e) => setGravity(parseInt(e.target.value))}
-              className="w-full accent-orange-500 h-1 bg-white/10 rounded-lg appearance-none cursor-pointer"
-            />
-          </div>
-        </div>
+
+              {/* Filter Group */}
+              <div className="pointer-events-auto bg-black/40 backdrop-blur-md border border-white/10 p-4 rounded-2xl shadow-xl w-64">
+                <div className="flex items-center gap-2 mb-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                  <Filter className="w-3 h-3" /> Filters
+                </div>
+                
+                {/* Type Filters */}
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  {['concept', 'thinker', 'treatise', 'question', 'axiom', 'praxis'].map(type => (
+                    <button
+                      key={type}
+                      onClick={() => {
+                        const next = new Set(activeTypes);
+                        next.has(type) ? next.delete(type) : next.add(type);
+                        setActiveTypes(next);
+                      }}
+                      className={cn(
+                        "text-[10px] uppercase px-2.5 py-1 rounded-full border transition-all duration-300",
+                        activeTypes.has(type) 
+                          ? "bg-orange-500/20 border-orange-500 text-orange-400 shadow-[0_0_10px_rgba(249,115,22,0.2)]" 
+                          : "bg-zinc-900/50 border-white/5 text-zinc-500 hover:border-white/20"
+                      )}
+                    >
+                      {type}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Status Filters */}
+                <div className="flex flex-wrap gap-1.5 border-t border-white/5 pt-3">
+                  {['VERIFIED', 'INFERENCE', 'HYPOTHESIS'].map(status => (
+                    <button
+                      key={status}
+                      onClick={() => {
+                        const next = new Set(activeStatuses);
+                        next.has(status) ? next.delete(status) : next.add(status);
+                        setActiveStatuses(next);
+                      }}
+                      className={cn(
+                        "text-[10px] uppercase px-2.5 py-1 rounded-full border transition-all duration-300",
+                        activeStatuses.has(status)
+                          ? "bg-blue-500/20 border-blue-500 text-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.2)]"
+                          : "bg-zinc-900/50 border-white/5 text-zinc-500 hover:border-white/20"
+                      )}
+                    >
+                      {status}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Action Toggles */}
+              <div className="pointer-events-auto flex flex-col gap-2">
+                <button
+                  onClick={() => setClusterMode(!clusterMode)}
+                  className={cn(
+                    "flex items-center gap-2 px-4 py-2 rounded-xl border backdrop-blur-md transition-all duration-300 shadow-lg",
+                    clusterMode 
+                      ? "bg-orange-500 text-black border-orange-400 font-semibold" 
+                      : "bg-black/40 border-white/10 text-zinc-400 hover:bg-white/5"
+                  )}
+                >
+                  <Atom className={cn("w-4 h-4", clusterMode && "animate-spin-slow")} />
+                  <span className="text-xs uppercase tracking-wider">Cluster Mode</span>
+                </button>
+
+                <button
+                  onClick={() => setShowLatent(!showLatent)}
+                  className={cn(
+                    "flex items-center gap-2 px-4 py-2 rounded-xl border backdrop-blur-md transition-all duration-300 shadow-lg",
+                    showLatent 
+                      ? "bg-emerald-500 text-black border-emerald-400 font-semibold" 
+                      : "bg-black/40 border-white/10 text-zinc-400 hover:bg-white/5"
+                  )}
+                >
+                  <Link2Off className={cn("w-4 h-4", showLatent && "animate-pulse")} />
+                  <span className="text-xs uppercase tracking-wider">Latent Synapses</span>
+                </button>
+
+                {/* Gravity Slider */}
+                <div className="bg-black/40 backdrop-blur-md border border-white/10 p-3 rounded-xl shadow-lg flex flex-col gap-2">
+                  <div className="flex items-center justify-between text-xs text-zinc-400 uppercase tracking-wider">
+                    <div className="flex items-center gap-1.5">
+                      <SlidersHorizontal className="w-3 h-3" />
+                      <span>Gravity</span>
+                    </div>
+                    <span>{gravity}%</span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="100" 
+                    value={gravity} 
+                    onChange={(e) => setGravity(parseInt(e.target.value))}
+                    className="w-full accent-orange-500 h-1 bg-white/10 rounded-lg appearance-none cursor-pointer"
+                  />
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* --- INSIGHT GENERATOR (BOTTOM LEFT) --- */}
@@ -294,9 +359,16 @@ export function KnowledgeGraph({ nodes, onNodeSelect, selectedNodeId }: { nodes:
       </AnimatePresence>
 
       {/* --- GRAPH CANVAS --- */}
-      <svg className="absolute inset-0 w-full h-full pointer-events-none">
-        <defs>
-          <linearGradient id="link-gradient" gradientUnits="userSpaceOnUse">
+      <div 
+        className="absolute inset-0 w-full h-full pointer-events-none"
+        style={{
+          transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.k})`,
+          transformOrigin: '0 0'
+        }}
+      >
+        <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible">
+          <defs>
+            <linearGradient id="link-gradient" gradientUnits="userSpaceOnUse">
             <stop offset="0%" stopColor="rgba(255,255,255,0.1)" />
             <stop offset="100%" stopColor="rgba(255,255,255,0.05)" />
           </linearGradient>
@@ -316,6 +388,8 @@ export function KnowledgeGraph({ nodes, onNodeSelect, selectedNodeId }: { nodes:
         {/* Latent Links */}
         <AnimatePresence>
           {showLatent && activeLatentLinks.map((link, i) => {
+            if (!link.source || !link.target || isNaN(link.source.x) || isNaN(link.target.x)) return null;
+
             const dx = link.target.x - link.source.x;
             const dy = link.target.y - link.source.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
@@ -356,6 +430,8 @@ export function KnowledgeGraph({ nodes, onNodeSelect, selectedNodeId }: { nodes:
         {/* Links */}
         <AnimatePresence>
           {links.map((link, i) => {
+            if (!link.source || !link.target || typeof link.source === 'string' || typeof link.target === 'string' || isNaN(link.source.x) || isNaN(link.target.x)) return null;
+
             // Calculate Quadratic Bezier Control Point
             const dx = link.target.x - link.source.x;
             const dy = link.target.y - link.source.y;
@@ -373,7 +449,7 @@ export function KnowledgeGraph({ nodes, onNodeSelect, selectedNodeId }: { nodes:
 
             return (
               <motion.path
-                key={`${link.source.id}-${link.target.id}`}
+                key={`link-${link.source.id}-${link.target.id}`}
                 d={`M ${link.source.x} ${link.source.y} Q ${cx} ${cy} ${link.target.x} ${link.target.y}`}
                 initial={{ pathLength: 0, opacity: 0 }}
                 animate={{ 
@@ -408,30 +484,37 @@ export function KnowledgeGraph({ nodes, onNodeSelect, selectedNodeId }: { nodes:
         <AnimatePresence>
           {layoutNodes.map((node) => {
             const matchesSearch = searchQuery && node.label.toLowerCase().includes(searchQuery.toLowerCase());
-            const isDimmed = (searchQuery && !matchesSearch) || (hoveredNodeId && hoveredNodeId !== node.id && !links.some(l => (l.source.id === node.id && l.target.id === hoveredNodeId) || (l.target.id === node.id && l.source.id === hoveredNodeId)));
+            const isDimmed = (searchQuery && !matchesSearch) || (hoveredNodeId && hoveredNodeId !== node.id && !links.some(l => (l.source?.id === node.id && l.target?.id === hoveredNodeId) || (l.target?.id === node.id && l.source?.id === hoveredNodeId)));
             const isSelected = selectedNodeId === node.id;
             const color = getNodeColor(node.type);
 
             return (
               <motion.div
-                key={node.id}
+                key={`node-${node.id}`}
                 initial={{ scale: 0, opacity: 0 }}
                 animate={{ 
-                  x: node.x, 
-                  y: node.y, 
                   scale: matchesSearch ? 1.2 : 1, 
                   opacity: isDimmed ? 0.1 : 1 
                 }}
                 exit={{ scale: 0, opacity: 0 }}
                 transition={{ type: "spring", stiffness: 500, damping: 30 }}
                 className="absolute"
-                style={{ transform: 'translate(-50%, -50%)' }}
+                style={{ 
+                  left: isNaN(node.x) ? 0 : node.x, 
+                  top: isNaN(node.y) ? 0 : node.y,
+                  x: "-50%",
+                  y: "-50%"
+                }}
               >
                 <div 
                   className={cn(
                     "pointer-events-auto relative group cursor-pointer flex items-center justify-center transition-all duration-300",
                     isSelected ? "z-30" : "z-20"
                   )}
+                  style={{
+                    animation: `float ${4 + (node.id.charCodeAt(0) % 3)}s ease-in-out infinite`,
+                    animationDelay: `${(node.id.charCodeAt(node.id.length - 1) % 5) * 0.2}s`
+                  }}
                   onMouseEnter={() => setHoveredNodeId(node.id)}
                   onMouseLeave={() => setHoveredNodeId(null)}
                   onClick={() => onNodeSelect(node)}
@@ -461,6 +544,7 @@ export function KnowledgeGraph({ nodes, onNodeSelect, selectedNodeId }: { nodes:
             );
           })}
         </AnimatePresence>
+      </div>
       </div>
 
       {/* --- SEMANTIC EXPANSION ENGINE (VOID-REVEAL) --- */}

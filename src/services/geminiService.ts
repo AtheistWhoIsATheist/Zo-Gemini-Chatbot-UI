@@ -9,7 +9,7 @@ const ai = new GoogleGenAI({ apiKey });
 const CHAT_MODEL = 'gemini-3.1-pro-preview';
 const FAST_MODEL = 'gemini-3-flash-preview';
 
-const EMBEDDING_MODEL = 'text-embedding-004';
+const EMBEDDING_MODEL = 'gemini-embedding-2-preview';
 
 // Cache for document embeddings to avoid re-computing across queries
 const embeddingCache = new Map<string, number[]>();

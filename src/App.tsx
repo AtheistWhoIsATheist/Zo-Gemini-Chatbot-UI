@@ -26,6 +26,8 @@ function App() {
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>('chat');
   const [isDbPanelOpen, setIsDbPanelOpen] = useState(false);
   const [showRupture, setShowRupture] = useState(true);
+  const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
+  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
 
   useEffect(() => {
     const timer = setTimeout(() => setShowRupture(false), 4000);
@@ -69,13 +71,42 @@ function App() {
         )}
       </AnimatePresence>
 
+      {/* Toggle Left Sidebar Button (when closed) */}
+      <AnimatePresence>
+        {!isLeftSidebarOpen && (
+          <motion.button
+            initial={{ x: -50, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: -50, opacity: 0 }}
+            onClick={() => setIsLeftSidebarOpen(true)}
+            className="fixed left-0 top-1/2 -translate-y-1/2 z-30 w-8 h-16 bg-[#0f0f0f] border border-l-0 border-white/10 rounded-r-xl flex items-center justify-center text-zinc-500 hover:text-orange-500 transition-colors shadow-2xl"
+          >
+            <Menu className="w-4 h-4" />
+          </motion.button>
+        )}
+      </AnimatePresence>
+
       {/* Left Sidebar - Navigation & Tools */}
-      <div className="w-20 border-r border-white/5 bg-[#0f0f0f] flex flex-col items-center py-6 z-20 shadow-2xl">
-        <div className="w-10 h-10 rounded-full bg-orange-500/10 border border-orange-500/20 flex items-center justify-center mb-8 shadow-[0_0_15px_rgba(249,115,22,0.15)]">
-          <span className="font-serif italic text-orange-500 font-bold">V</span>
-        </div>
-        
-        <nav className="flex-1 flex flex-col gap-4">
+      <AnimatePresence>
+        {isLeftSidebarOpen && (
+          <motion.div 
+            initial={{ x: -80 }}
+            animate={{ x: 0 }}
+            exit={{ x: -80 }}
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            className="w-20 border-r border-white/5 bg-[#0f0f0f] flex flex-col items-center py-6 z-20 shadow-2xl relative"
+          >
+            <button 
+              onClick={() => setIsLeftSidebarOpen(false)}
+              className="absolute top-2 right-2 p-1 text-zinc-500 hover:text-white transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <div className="w-10 h-10 rounded-full bg-orange-500/10 border border-orange-500/20 flex items-center justify-center mb-8 shadow-[0_0_15px_rgba(249,115,22,0.15)]">
+              <span className="font-serif italic text-orange-500 font-bold">V</span>
+            </div>
+            
+            <nav className="flex-1 flex flex-col gap-4">
           <button 
             onClick={() => setViewMode('graph')}
             className={cn(
@@ -149,7 +180,9 @@ function App() {
             <span className="absolute top-3 right-3 w-1.5 h-1.5 bg-emerald-500 rounded-full shadow-[0_0_5px_rgba(16,185,129,0.8)]" />
           </button>
         </nav>
-      </div>
+      </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Main Content Area */}
       <main className="flex-1 relative overflow-hidden">
@@ -177,9 +210,39 @@ function App() {
         )}
       </main>
 
+      {/* Toggle Right Sidebar Button (when closed) */}
+      <AnimatePresence>
+        {!isRightSidebarOpen && (
+          <motion.button
+            initial={{ x: 50, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: 50, opacity: 0 }}
+            onClick={() => setIsRightSidebarOpen(true)}
+            className="fixed right-0 top-1/2 -translate-y-1/2 z-30 w-8 h-16 bg-[#0f0f0f] border border-r-0 border-white/10 rounded-l-xl flex items-center justify-center text-zinc-500 hover:text-orange-500 transition-colors shadow-2xl"
+          >
+            <Menu className="w-4 h-4" />
+          </motion.button>
+        )}
+      </AnimatePresence>
+
       {/* Right Sidebar - Professor Nihil & Intelligence Cards */}
-      <div className="w-[400px] border-l border-white/5 bg-[#0f0f0f] flex flex-col z-20 shadow-2xl relative">
-        {/* Sidebar Mode Toggle */}
+      <AnimatePresence>
+        {isRightSidebarOpen && (
+          <motion.div 
+            initial={{ x: 400 }}
+            animate={{ x: 0 }}
+            exit={{ x: 400 }}
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            className="w-[400px] border-l border-white/5 bg-[#0f0f0f] flex flex-col z-20 shadow-2xl relative"
+          >
+            <button 
+              onClick={() => setIsRightSidebarOpen(false)}
+              className="absolute top-2 left-2 p-1 text-zinc-500 hover:text-white transition-colors z-50"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            
+            {/* Sidebar Mode Toggle */}
         <div className="absolute -left-12 top-20 flex flex-col gap-2 z-50">
           <button
             onClick={() => setSidebarMode('chat')}
@@ -231,7 +294,9 @@ function App() {
             onNodeSelect={handleNodeSelect}
           />
         )}
-      </div>
+      </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Database Panel Overlay */}
       <AnimatePresence>
