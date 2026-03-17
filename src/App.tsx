@@ -8,15 +8,17 @@ import { SummaryFeed } from './components/SummaryFeed';
 import { RevelationDigest } from './components/RevelationDigest';
 import { StructuralGaps } from './components/StructuralGaps';
 import { SystemTopology } from './components/SystemTopology';
+import { KnowledgeCurator } from './components/KnowledgeCurator';
+import { ShiftingVoidExplanation } from './components/ShiftingVoidExplanation';
 import { corpusNodes, corpusLinks, Node } from './data/corpus';
 import { 
   Menu, X, Database, Network, Library as LibraryIcon, 
-  Sparkles, Eye, AlertTriangle, Cpu, MessageSquare, Layers, Zap
+  Sparkles, Eye, AlertTriangle, Cpu, MessageSquare, Layers, Zap, BookOpen
 } from 'lucide-react';
 import { cn } from './lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 
-type ViewMode = 'graph' | 'library' | 'summaries' | 'revelation' | 'gaps' | 'topology';
+type ViewMode = 'graph' | 'library' | 'summaries' | 'revelation' | 'gaps' | 'topology' | 'curator' | 'shifting_void';
 type SidebarMode = 'chat' | 'intelligence' | 'insights';
 
 function App() {
@@ -168,6 +170,26 @@ function App() {
             <Cpu className="w-5 h-5" strokeWidth={1.5} />
           </button>
           <button 
+            onClick={() => setViewMode('curator')}
+            className={cn(
+              "w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer",
+              viewMode === 'curator' ? "neo-pressed text-orange-400" : "neo-convex text-zinc-500 hover:text-zinc-300"
+            )}
+            title="[NT] Knowledge Curator"
+          >
+            <Zap className="w-5 h-5" strokeWidth={1.5} />
+          </button>
+          <button 
+            onClick={() => setViewMode('shifting_void')}
+            className={cn(
+              "w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer",
+              viewMode === 'shifting_void' ? "neo-pressed text-orange-400" : "neo-convex text-zinc-500 hover:text-zinc-300"
+            )}
+            title="[SV] The Shifting Void Concept"
+          >
+            <BookOpen className="w-5 h-5" strokeWidth={1.5} />
+          </button>
+          <button 
             onClick={() => setIsDbPanelOpen(true)}
             className={cn(
               "w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer relative",
@@ -207,6 +229,12 @@ function App() {
         )}
         {viewMode === 'topology' && (
           <SystemTopology />
+        )}
+        {viewMode === 'curator' && (
+          <KnowledgeCurator />
+        )}
+        {viewMode === 'shifting_void' && (
+          <ShiftingVoidExplanation />
         )}
       </main>
 
