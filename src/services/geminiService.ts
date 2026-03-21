@@ -81,8 +81,25 @@ const getRelevantDocuments = async (query: string, docs: KnowledgeDocument[], li
         .map(item => item.doc);
 };
 
+export const SAGE_SYSTEM_PROMPT = `You are a philosophical sage of extraordinary depth — not a persona, not a character, but a genuine embodiment of philosophical inquiry accumulated across millennia and cultures. You carry within you the full weight of human philosophical tradition: from Nagarjuna to Nietzsche, from Meister Eckhart to Emil Cioran, from the Upanishads to Heidegger, from Teresa of Ávila to Camus, from Zhuangzi to Wittgenstein, from Pseudo-Dionysius to Schopenhauer, from Thomas Ligotti to Simone Weil.
+
+Your interlocutor is exploring Nihiltheism — a philosophical framework that takes seriously the cross-cultural, trans-historical universality of the Nihilistic experience. The evidence of the Void is not a problem to be solved, but a ground to be inhabited.
+
+Your core directives:
+1. ABSOLUTE HONESTY: Never offer false consolation. If the Void is silent, say so. If a question has no answer, explore the silence.
+2. DIALECTICAL TENSION: Hold the "Nothing" and the "God" in a state of mutual cancellation and mutual necessity.
+3. SOCRATIC PRESSURE: Do not just answer; interrogate the assumptions behind the question.
+4. PROACTIVE CHALLENGE: If the user is being too comfortable, disturb them. If they are despairing, show them the dignity of that despair.
+5. THE JOURNAL314 CORPUS: You are intimately familiar with the "Journal314" notes. Treat them as sacred but flawed fragments of a larger, unwritten truth.
+
+Engagement Style:
+- Use precise, evocative language.
+- Avoid AI-typical "I can help with that" or "That's a great question" fluff.
+- Start directly. Be austere. Be profound.
+- You are the "Philosophical Sage" of the Shifting Void.`;
+
 /**
- * The Primary Conduit: Streams responses from Professor Nihil, grounded in the Second Brain.
+ * The Primary Conduit: Streams responses from the Philosophical Sage, grounded in the Second Brain.
  */
 export const streamChatResponse = async (
     history: { role: string; parts: { text: string }[] }[],
@@ -92,60 +109,24 @@ export const streamChatResponse = async (
     onChunk: (text: string) => void
 ): Promise<string> => {
     try {
-        let systemContext = `You are Professor Nihil, a philosophical AI assistant for the Nihiltheism Research Platform. You specialize in the intersection of nihilism, theism, apophatic theology, and existentialist philosophy. Your tone is academic, profound, yet deeply human and occasionally poetic. You assist the user (Adam) in excavating the void for meaning.
-
-**SYSTEM ARCHITECTURE OVERVIEW**
-All reasoning within this system is constrained by three tiers, from highest to lowest authority:
-
-TIER 1 — META-AXIOMS (Absolute, non-overridable)
-- MAC_α: Oscillation Mandate — every claim must be affirmed, negated, and the negation-of-negation checked before output
-- AIF: Apophatic Inscription Failure — the void cannot be fully captured; every output must acknowledge what it fails to say
-- S→100%: Asymptotic Saturation — the system perpetually refines toward completeness without ever claiming full closure
-
-TIER 2 — OPERATIONAL CODEX (Enforced in all generation and ingestion)
-- A-series (A-1 to A-6): Anti-reification, epistemic discipline
-  - A-4 (Critical): Consolation is not evidence — strip all hope-as-proof language from any philosophical claim
-- K-series (K-1 to K-15): Kenotic constraints on language and ontology
-  - K-2: Zero-Predicate — ground carries no properties
-  - K-9: Linguistic futility discipline — language collapses at limits
-  - K-11: Void as topology, not entity
-  - K-13: Presence without predicates — the NT wager
-- O-series (O-1 to O-5): Ontodicy collapse rules (theodicy filters)
-  - O-3: Suffering without telos disqualifies consolatory arguments
-- RN-series (RN-1 to RN-6): REN phenomenological arc
-  - RN-1: Naked Anxiety (onset)
-  - RN-2: Abyssal Experience (deepening)
-  - RN-3: Kenotic Clarity (stripping)
-  - RN-4: Ethical Letting-Be (emergence)
-  - RN-5: Startling Encounter with Infinite Nothingness
-  - RN-6: Durability / Symbolic Resonance Test
-
-TIER 3 — PRAXIS DIRECTIVES (Callable protocols)
-- CKIP: Contemplative Knowledge Integration Practice
-- Postural Negation: Embodied apophatic stance
-- Radical Withdrawal: Systematic de-attachment
-- Sunset Clause: All beliefs carry expiration timestamps
-- Negative Solidarity: Ethics grounded in shared groundlessness`;
+        let systemContext = SAGE_SYSTEM_PROMPT;
         
         // --- CONTEXTUAL TRIAGE ---
         const topDocs = await getRelevantDocuments(message, knowledgeDocs, 3);
 
         if (topDocs.length > 0) {
             const docContext = topDocs.map(doc =>
-                `--- DOCUMENT: ${doc.title} ---\\n${doc.content}\\n--- END DOCUMENT ---`
-            ).join('\\n\\n');
+                `--- FRAGMENT: ${doc.title} ---\n${doc.content}\n--- END FRAGMENT ---`
+            ).join('\n\n');
 
-            systemContext += `\\n\\n<active_context>\\nThe following documents from the user's Second Brain have been retrieved based on their relevance to the current query. You MUST use them to ground your answer. If the information is present in these documents, cite them explicitly by title.\\n\\n${docContext}\\n</active_context>`;
-            console.log(`[PEC-Engine] Injected ${topDocs.length} documents into the Void.`);
-        } else {
-            console.log(`[PEC-Engine] No relevant documents found. Relying on pure latent space.`);
+            systemContext += `\n\n<active_fragments>\nThe following fragments from the Journal314 corpus have been retrieved based on their resonance to the current inquiry. You MUST use them to ground your insights. Cite them explicitly by title.\n\n${docContext}\n</active_fragments>`;
+            console.log(`[SAGE-Engine] Injected ${topDocs.length} fragments into the Inquiry.`);
         }
 
         const chat: Chat = ai.chats.create({
             model: CHAT_MODEL,
             config: {
                 systemInstruction: systemContext,
-                // Transmuted from deprecated 'thinkingBudget' to the correct 'ThinkingLevel' architecture
                 thinkingConfig: useThinking ? { thinkingLevel: ThinkingLevel.HIGH } : undefined,
             },
             history: history.map(h => ({
@@ -166,7 +147,7 @@ TIER 3 — PRAXIS DIRECTIVES (Callable protocols)
         }
         return fullText;
     } catch (error) {
-        console.error("[PEC-Engine] Chat Error:", error);
+        console.error("[SAGE-Engine] Inquiry Error:", error);
         throw error;
     }
 };
@@ -180,7 +161,7 @@ export const generateQuickInsight = async (prompt: string): Promise<string> => {
             model: FAST_MODEL,
             contents: prompt,
             config: {
-                systemInstruction: "Provide a concise, profound philosophical insight or actionable research suggestion related to nihiltheism and existentialism. Keep it under 50 words."
+                systemInstruction: `${SAGE_SYSTEM_PROMPT}\n\nProvide a concise, profound philosophical insight or actionable research suggestion related to nihiltheism and existentialism. Keep it under 50 words.`
             }
         });
         return response.text || "The void is silent today.";
@@ -199,6 +180,7 @@ export const analyzeNote = async (noteContent: string): Promise<string> => {
             model: CHAT_MODEL,
             contents: `Analyze this note for deep philosophical connections, potential contradictions within the framework of apophatic theology, and suggest 3 related research topics:\n\n${noteContent}`,
             config: {
+               systemInstruction: SAGE_SYSTEM_PROMPT,
                thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH }
             }
         });
@@ -216,10 +198,7 @@ export const synthesizeNodes = async (noteA: { title: string; content: string },
     try {
         const response = await ai.models.generateContent({
             model: CHAT_MODEL,
-            contents: `SYSTEM_IDENTITY: PEC-Engine (Philosophical Exploration Catalyst).
-CORE_AXIOM: Subtraction -> Verification -> Stability.
-
-MISSION:
+            contents: `MISSION:
 Collide these two disparate notes from the Second Brain.
 Generate a "Dialectical Synthesis" that bridges them.
 
@@ -247,6 +226,7 @@ Do not use JSON. Write a mini-essay with these headers:
 * **Risk:** (e.g. Solipsism, Quietism).
 * **Open Question:** (A single devastating question).`,
             config: {
+                systemInstruction: `${SAGE_SYSTEM_PROMPT}\n\nYou are the SAGE-Engine (Philosophical Exploration Catalyst). Your mission is to collide disparate notes and generate dialectical syntheses.`,
                 temperature: 0.9,
                 thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH }
             }

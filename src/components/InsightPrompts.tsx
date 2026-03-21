@@ -1,8 +1,10 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Node, Link } from '../data/corpus';
-import { Zap, ArrowRight, Sparkles, BrainCircuit } from 'lucide-react';
+import { Zap, ArrowRight, Sparkles, BrainCircuit, Loader2 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { synthesizeNodes } from '../services/geminiService';
+import { blocksToString } from '../utils/voidUtils';
 
 export function InsightPrompts({ 
   nodes, 
@@ -14,6 +16,8 @@ export function InsightPrompts({
   onNodeSelect: (node: Node) => void;
 }) {
   const [activePrompt, setActivePrompt] = useState<string | null>(null);
+  const [syntheses, setSyntheses] = useState<Record<string, string>>({});
+  const [loadingId, setLoadingId] = useState<string | null>(null);
 
   const latentLinks = useMemo(() => {
     const lLinks: { source: Node; target: Node; reason: string }[] = [];
@@ -37,99 +41,143 @@ export function InsightPrompts({
         }
       }
     }
-    return lLinks.slice(0, 15); // Limit to top 15 for performance/UI
+    return lLinks.slice(0, 15);
   }, [nodes, links]);
 
+  const handleGenerateSynthesis = async (link: { source: Node; target: Node; reason: string }) => {
+    const id = `${link.source.id}-${link.target.id}`;
+    setLoadingId(id);
+    try {
+      const result = await synthesizeNodes(
+        { title: link.source.label, content: blocksToString(link.source.blocks) },
+        { title: link.target.label, content: blocksToString(link.target.blocks) }
+      );
+      setSyntheses(prev => ({ ...prev, [id]: result }));
+    } catch (error) {
+      console.error('Synthesis error:', error);
+    } finally {
+      setLoadingId(null);
+    }
+  };
+
   return (
-    <div className="flex flex-col h-full bg-[#0a0a0a] text-zinc-100 font-sans border-l border-white/5">
-      {/* Header */}
-      <div className="p-6 border-b border-white/5 bg-black/40 backdrop-blur-md">
-        <div className="flex items-center gap-3 mb-2">
-          <BrainCircuit className="w-5 h-5 text-emerald-500" />
-          <h2 className="text-lg font-medium tracking-wide">Insight Prompts</h2>
+    <div className="flex flex-col h-full bg-[#0b0905] text-[#d4c8b0] font-sans border-l border-[#c8922a]/10">
+      {/* Abyssal Header */}
+      <div className="p-8 border-b border-[#c8922a]/10 bg-[#1a160d]/20 backdrop-blur-md">
+        <div className="flex items-center gap-4 mb-3">
+          <div className="w-10 h-10 rounded-full border border-[#c8922a]/20 flex items-center justify-center bg-[#c8922a]/5">
+            <BrainCircuit className="w-5 h-5 text-[#c8922a]" strokeWidth={1.5} />
+          </div>
+          <div>
+            <h2 className="text-lg font-serif italic tracking-wide">Latent Echoes</h2>
+            <p className="text-[9px] text-[#c8922a]/50 uppercase tracking-[0.2em] mt-0.5 font-mono">Sub-threshold Resonance</p>
+          </div>
         </div>
-        <p className="text-xs text-zinc-500 leading-relaxed">
-          Latent Synapses detected. These are conceptual bridges waiting to be formalized.
+        <p className="text-[11px] text-[#5a5a40] leading-relaxed font-serif italic">
+          Conceptual bridges emerging from the void. Formalize the unspoken.
         </p>
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
         {latentLinks.length === 0 ? (
-          <div className="text-center p-8 text-zinc-500 text-sm">
-            No latent synapses detected. Expand your ontology to discover new connections.
+          <div className="flex flex-col items-center justify-center h-64 text-center opacity-30">
+            <Zap className="w-8 h-8 text-[#c8922a] mb-4" />
+            <p className="text-[#5a5a40] text-sm font-serif italic">
+              The void is silent. No latent bridges detected.
+            </p>
           </div>
         ) : (
-          latentLinks.map((link, idx) => (
-            <motion.div
-              key={`${link.source.id}-${link.target.id}`}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.05 }}
-              className={cn(
-                "p-4 rounded-xl border transition-all duration-300 cursor-pointer group",
-                activePrompt === `${link.source.id}-${link.target.id}`
-                  ? "bg-emerald-500/10 border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.1)]"
-                  : "bg-zinc-900/50 border-white/5 hover:border-white/20 hover:bg-zinc-900/80"
-              )}
-              onClick={() => setActivePrompt(
-                activePrompt === `${link.source.id}-${link.target.id}` ? null : `${link.source.id}-${link.target.id}`
-              )}
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <Zap className="w-3 h-3 text-emerald-500" />
-                  <span className="text-[10px] uppercase tracking-widest text-emerald-500/70 font-bold">
-                    Latent Bridge
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <div 
-                  className="text-sm font-medium text-zinc-300 hover:text-emerald-400 transition-colors"
-                  onClick={(e) => { e.stopPropagation(); onNodeSelect(link.source); }}
-                >
-                  {link.source.label}
-                </div>
-                
-                <div className="flex items-center gap-2 text-zinc-600 pl-2 border-l border-white/10 py-1">
-                  <ArrowRight className="w-3 h-3" />
-                  <span className="text-[10px] uppercase tracking-wider">
-                    Via: {link.reason}
-                  </span>
-                </div>
-
-                <div 
-                  className="text-sm font-medium text-zinc-300 hover:text-emerald-400 transition-colors"
-                  onClick={(e) => { e.stopPropagation(); onNodeSelect(link.target); }}
-                >
-                  {link.target.label}
-                </div>
-              </div>
-
-              <AnimatePresence>
-                {activePrompt === `${link.source.id}-${link.target.id}` && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="mt-4 pt-4 border-t border-white/5">
-                      <p className="text-xs text-zinc-400 leading-relaxed mb-3">
-                        <strong className="text-zinc-300">Synthesis Prompt:</strong> How does the concept of "{link.source.label}" recontextualize or challenge "{link.target.label}" when viewed through the lens of {link.reason}?
-                      </p>
-                      <button className="w-full py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 text-xs font-medium rounded-lg transition-colors flex items-center justify-center gap-2">
-                        <Sparkles className="w-3 h-3" />
-                        Generate Synthesis
-                      </button>
-                    </div>
-                  </motion.div>
+          latentLinks.map((link, idx) => {
+            const id = `${link.source.id}-${link.target.id}`;
+            return (
+              <motion.div
+                key={id}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: idx * 0.05 }}
+                className={cn(
+                  "p-6 rounded-sm border transition-all duration-500 cursor-pointer group relative overflow-hidden",
+                  activePrompt === id
+                    ? "bg-[#1a160d]/60 border-[#c8922a]/30 shadow-[0_0_30px_rgba(200,146,42,0.05)]"
+                    : "bg-[#1a160d]/20 border-[#c8922a]/5 hover:border-[#c8922a]/20 hover:bg-[#1a160d]/40"
                 )}
-              </AnimatePresence>
-            </motion.div>
-          ))
+                onClick={() => setActivePrompt(activePrompt === id ? null : id)}
+              >
+                <div className="absolute top-0 left-0 w-[1px] h-full bg-gradient-to-b from-transparent via-[#c8922a]/20 to-transparent" />
+                
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Zap className="w-3 h-3 text-[#c8922a]/60" />
+                    <span className="text-[9px] uppercase tracking-[0.3em] text-[#c8922a]/40 font-mono">
+                      Latent.Bridge_{idx}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-4">
+                  <div 
+                    className="text-base font-serif italic text-[#d4c8b0]/90 hover:text-[#c8922a] transition-colors cursor-pointer"
+                    onClick={(e) => { e.stopPropagation(); onNodeSelect(link.source); }}
+                  >
+                    {link.source.label}
+                  </div>
+                  
+                  <div className="flex items-center gap-3 text-[#5a5a40] pl-4 border-l border-[#c8922a]/10 py-1">
+                    <ArrowRight className="w-3 h-3 opacity-50" />
+                    <span className="text-[10px] uppercase tracking-[0.2em] font-mono">
+                      Via: {link.reason}
+                    </span>
+                  </div>
+
+                  <div 
+                    className="text-base font-serif italic text-[#d4c8b0]/90 hover:text-[#c8922a] transition-colors cursor-pointer"
+                    onClick={(e) => { e.stopPropagation(); onNodeSelect(link.target); }}
+                  >
+                    {link.target.label}
+                  </div>
+                </div>
+
+                <AnimatePresence>
+                  {activePrompt === id && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="mt-6 pt-6 border-t border-[#c8922a]/10">
+                        {syntheses[id] ? (
+                          <div className="text-xs text-[#d4c8b0]/70 leading-relaxed font-serif italic prose prose-invert prose-xs max-w-none">
+                            <div dangerouslySetInnerHTML={{ __html: syntheses[id].replace(/\n/g, '<br/>') }} />
+                          </div>
+                        ) : (
+                          <>
+                            <p className="text-[11px] text-[#5a5a40] leading-relaxed mb-4 font-serif italic">
+                              <strong className="text-[#c8922a]/70 not-italic uppercase tracking-widest text-[9px] mr-2">The Inquiry:</strong> 
+                              How does "{link.source.label}" recontextualize "{link.target.label}" through the lens of {link.reason}?
+                            </p>
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); handleGenerateSynthesis(link); }}
+                              disabled={loadingId === id}
+                              className="w-full py-3 bg-[#c8922a]/5 hover:bg-[#c8922a]/10 border border-[#c8922a]/20 text-[#c8922a] text-[10px] uppercase tracking-[0.2em] font-mono rounded-sm transition-all flex items-center justify-center gap-3 disabled:opacity-30"
+                            >
+                              {loadingId === id ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Sparkles className="w-4 h-4" />
+                              )}
+                              Forge Synthesis
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            );
+          })
         )}
       </div>
     </div>

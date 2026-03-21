@@ -1,203 +1,316 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
+import React, { useState, useRef, useEffect } from "react";
+import { motion, AnimatePresence } from "motion/react";
+import { Send, AlertCircle, Terminal, Ghost, ScrollText, Eye, EyeOff, ShieldAlert } from "lucide-react";
+import Markdown from "react-markdown";
+import { streamChatResponse, SAGE_SYSTEM_PROMPT } from "../services/geminiService";
+import { Node } from "../data/corpus";
+import { KnowledgeDocument } from "../types";
+import { blocksToString } from "../utils/voidUtils";
 
-
-import { useState, useRef, useEffect } from 'react';
-import Markdown from 'react-markdown';
-import { Send, Loader2, ChevronRight, Search, Pin, Download, Settings, AlertTriangle } from 'lucide-react';
-import { Node } from '../data/corpus';
-import { cn } from '../lib/utils';
-import { motion, AnimatePresence } from 'motion/react';
-import { streamChatResponse } from '../services/geminiService';
-import { KnowledgeDocument } from '../types';
-import { blocksToString } from '../utils/voidUtils';
+const THINKING_PHRASES = [
+  "Consulting the silence...",
+  "Excavating the Journal314 fragments...",
+  "Tracing the apophatic arc...",
+  "Holding the contradiction...",
+  "Listening to the Void's resonance...",
+  "Deconstructing the predicate...",
+  "Inhabiting the kenotic space...",
+  "Awaiting the subtraction...",
+];
 
 interface Message {
-  role: 'user' | 'model' | 'system';
-  text: string;
+  role: "user" | "model";
+  content: string;
 }
 
 interface ChatbotProps {
   nodes: Node[];
-  onCollapse: () => void;
+  onCollapse?: () => void;
 }
 
-export function Chatbot({ nodes, onCollapse }: ChatbotProps) {
-  const [messages, setMessages] = useState<Message[]>([
-    { role: 'model', text: 'I am the Knowledge Curator. I synthesize the Void into structured wisdom. How shall we deconstruct the library today?' }
-  ]);
-  const [input, setInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  
-  const chatSessionRef = useRef<any>(null);
+const nodesToDocs = (nodes: Node[]): KnowledgeDocument[] => {
+  return nodes.map(node => ({
+    id: node.id,
+    title: node.label,
+    content: blocksToString(node.blocks) || node.label,
+    uploadDate: node.metadata?.date_added ? new Date(node.metadata.date_added).getTime() : Date.now(),
+    tags: node.metadata?.tags || [],
+    embedding: node.metadata?.embedding
+  }));
+};
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+export const Chatbot: React.FC<ChatbotProps> = ({ nodes }) => {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
+  const [isThinking, setIsThinking] = useState(false);
+  const [thinkingPhrase, setThinkingPhrase] = useState(THINKING_PHRASES[0]);
+  const [streamingText, setStreamingText] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [showSystemPrompt, setShowSystemPrompt] = useState(false);
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages, streamingText, isThinking]);
 
-  const handleSend = async () => {
-    if (!input.trim() || isLoading) return;
+  useEffect(() => {
+    if (isThinking) {
+      const interval = setInterval(() => {
+        setThinkingPhrase(THINKING_PHRASES[Math.floor(Math.random() * THINKING_PHRASES.length)]);
+      }, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [isThinking]);
 
-    const userText = input.trim();
-    setInput('');
-    setMessages(prev => [...prev, { role: 'user', text: userText }]);
-    setIsLoading(true);
+  const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
+    }
+  };
+
+  const sendMessage = async () => {
+    if (!input.trim() || isThinking) return;
+
+    const userMessage = input.trim();
+    setInput("");
+    if (textareaRef.current) textareaRef.current.style.height = "auto";
+    
+    setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
+    setIsThinking(true);
     setError(null);
+    setStreamingText("");
 
     try {
-      const history = messages.map(m => ({
-        role: m.role === 'model' ? 'model' : 'user',
-        parts: [{ text: m.text }]
-      }));
-      
-
-      const knowledgeDocs = nodes.map(n => ({
-        id: n.id,
-        title: n.label,
-        content: blocksToString(n.blocks) || n.label,
-        uploadDate: n.metadata?.date_added ? new Date(n.metadata.date_added).getTime() : 0,
-        tags: n.metadata?.tags || [],
-        embedding: n.metadata?.embedding
+      const history = messages.map((m) => ({
+        role: m.role,
+        parts: [{ text: m.content }],
       }));
 
-      setMessages(prev => [...prev, { role: 'model', text: '' }]);
-      
-      await streamChatResponse(
+      const knowledgeDocs = nodesToDocs(nodes);
+
+      const response = await streamChatResponse(
         history,
-        userText,
-        true,
+        userMessage,
+        true, // useThinking
         knowledgeDocs,
         (chunk) => {
-          setMessages(prev => {
-            const newMessages = [...prev];
-            const lastIndex = newMessages.length - 1;
-            newMessages[lastIndex] = {
-              ...newMessages[lastIndex],
-              text: newMessages[lastIndex].text + chunk
-            };
-            return newMessages;
-          });
+          setStreamingText((prev) => prev + chunk);
         }
       );
-    } catch (err: any) {
-      console.error('Chat error:', err);
-      const errorMsg = `[SYSTEM ERROR]: ${err.message || 'Connection to the Void severed.'}`;
-      setError(errorMsg);
-      setMessages(prev => [...prev, { role: 'model', text: errorMsg }]);
+
+      setMessages((prev) => [...prev, { role: "model", content: response }]);
+      setStreamingText("");
+    } catch (err) {
+      console.error("Chat Error:", err);
+      setError("The connection to the Void has been severed. Attempting to reconnect...");
     } finally {
-      setIsLoading(false);
+      setIsThinking(false);
     }
   };
 
   return (
-    <div className="flex flex-col h-full neo-bg font-sans relative">
-      {/* Collapse Toggle */}
-      <motion.button 
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-        onClick={onCollapse}
-        className="absolute -left-3 top-8 w-6 h-6 rounded-full neo-convex flex items-center justify-center text-orange-500/60 hover:text-orange-500 transition-colors z-40"
-      >
-        <ChevronRight className="w-3 h-3" strokeWidth={3} />
-      </motion.button>
-
-      {/* Header */}
-      <div className="px-8 py-6 border-b border-white/[0.02] flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <ChevronRight className="w-4 h-4 text-orange-500/80" strokeWidth={3} />
-          <div>
-            <h2 className="text-[13px] font-semibold text-zinc-200 tracking-widest uppercase">PEM_ARCHITECT_PRIME</h2>
-            <p className="text-[9px] text-zinc-500 uppercase tracking-widest mt-0.5 font-mono">Existential Engine Active</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-4 text-zinc-500">
-          <Search className="w-4 h-4 hover:text-zinc-300 cursor-pointer transition-colors" />
-          <Pin className="w-4 h-4 hover:text-zinc-300 cursor-pointer transition-colors" />
-          <Download className="w-4 h-4 hover:text-zinc-300 cursor-pointer transition-colors" />
-          <Settings className="w-4 h-4 hover:text-orange-500 cursor-pointer transition-colors" />
-        </div>
+    <div className="flex flex-col h-full bg-[#0b0905] text-[#d4c8b0] font-eb-garamond relative overflow-hidden">
+      {/* Background Layers */}
+      <div className="absolute inset-0 pointer-events-none opacity-20">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,#c8922a11,transparent_70%)]" />
+        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/asfalt-dark.png')] opacity-30" />
       </div>
 
-      {/* Error Banner */}
-      <AnimatePresence>
+      {/* Header */}
+      <div className="flex items-center justify-between px-6 py-4 border-b border-[#c8922a22] bg-[#0b0905]/80 backdrop-blur-md z-10">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full border border-[#c8922a44] flex items-center justify-center bg-[#1a160d]">
+            <Ghost className="w-4 h-4 text-[#c8922a]" />
+          </div>
+          <div>
+            <h2 className="text-lg font-medium tracking-widest uppercase text-[#c8922a]">Philosophical Sage</h2>
+            <div className="flex items-center gap-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-[#c8922a] animate-pulse" />
+              <span className="text-[10px] font-sono uppercase tracking-tighter opacity-50">Inhabiting the Void</span>
+            </div>
+          </div>
+        </div>
+        <button 
+          onClick={() => setShowSystemPrompt(!showSystemPrompt)}
+          className="p-2 hover:bg-[#c8922a11] rounded-full transition-colors opacity-40 hover:opacity-100"
+          title="View Directives"
+        >
+          {showSystemPrompt ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+        </button>
+      </div>
+
+      {/* Messages Area */}
+      <div 
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto px-6 py-8 space-y-12 custom-scrollbar z-10"
+      >
+        <AnimatePresence initial={false}>
+          {messages.length === 0 && !isThinking && (
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex flex-col items-center justify-center h-full text-center space-y-6 opacity-40"
+            >
+              <ScrollText className="w-12 h-12 stroke-[1px]" />
+              <div className="max-w-xs space-y-2">
+                <p className="italic text-lg">"The silence is not an absence, but a presence that has not yet spoken."</p>
+                <p className="text-xs font-sono uppercase tracking-widest">Begin the inquiry</p>
+              </div>
+            </motion.div>
+          )}
+
+          {messages.map((msg, idx) => (
+            <motion.div
+              key={idx}
+              initial={{ opacity: 0, x: msg.role === 'user' ? 10 : -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
+            >
+              <div className={`max-w-[85%] space-y-2 ${msg.role === 'user' ? 'text-right' : 'text-left'}`}>
+                <span className="text-[10px] font-sono uppercase tracking-[0.2em] opacity-30">
+                  {msg.role === 'user' ? 'Interlocutor' : 'The Sage'}
+                </span>
+                <div className={`prose prose-invert prose-sm max-w-none font-eb-garamond leading-relaxed ${
+                  msg.role === 'user' 
+                    ? 'text-[#f0e6d2] italic' 
+                    : 'text-[#d4c8b0]'
+                }`}>
+                  <Markdown>{msg.content}</Markdown>
+                </div>
+              </div>
+            </motion.div>
+          ))}
+
+          {isThinking && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="flex flex-col items-start space-y-4"
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex gap-1">
+                  <motion.div 
+                    animate={{ scale: [1, 1.5, 1] }} 
+                    transition={{ repeat: Infinity, duration: 2 }}
+                    className="w-1 h-1 rounded-full bg-[#c8922a]" 
+                  />
+                  <motion.div 
+                    animate={{ scale: [1, 1.5, 1] }} 
+                    transition={{ repeat: Infinity, duration: 2, delay: 0.3 }}
+                    className="w-1 h-1 rounded-full bg-[#c8922a]" 
+                  />
+                  <motion.div 
+                    animate={{ scale: [1, 1.5, 1] }} 
+                    transition={{ repeat: Infinity, duration: 2, delay: 0.6 }}
+                    className="w-1 h-1 rounded-full bg-[#c8922a]" 
+                  />
+                </div>
+                <span className="text-xs font-sono italic opacity-40 animate-pulse">
+                  {thinkingPhrase}
+                </span>
+              </div>
+              
+              {streamingText && (
+                <div className="max-w-[85%] space-y-2">
+                  <span className="text-[10px] font-sono uppercase tracking-[0.2em] opacity-30">The Sage</span>
+                  <div className="prose prose-invert prose-sm max-w-none font-eb-garamond leading-relaxed text-[#d4c8b0]">
+                    <Markdown>{streamingText}</Markdown>
+                    <motion.span 
+                      animate={{ opacity: [0, 1, 0] }}
+                      transition={{ repeat: Infinity, duration: 0.8 }}
+                      className="inline-block w-1.5 h-4 bg-[#c8922a] ml-1 align-middle"
+                    />
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {error && (
           <motion.div 
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="bg-red-500/10 border-b border-red-500/20 px-8 py-3 flex items-center gap-3"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="p-4 bg-red-950/20 border border-red-900/30 rounded-lg flex items-start gap-3"
           >
-            <AlertTriangle className="w-4 h-4 text-red-500" />
-            <span className="text-[10px] text-red-400 font-mono uppercase tracking-widest">{error}</span>
+            <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+            <p className="text-sm text-red-200/70 italic">{error}</p>
+          </motion.div>
+        )}
+      </div>
+
+      {/* System Prompt Overlay */}
+      <AnimatePresence>
+        {showSystemPrompt && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="absolute inset-x-6 top-20 bottom-24 bg-[#1a160d] border border-[#c8922a22] rounded-xl p-6 z-20 overflow-y-auto shadow-2xl backdrop-blur-xl"
+          >
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xs font-sono uppercase tracking-[0.3em] text-[#c8922a]">Core Directives</h3>
+              <button onClick={() => setShowSystemPrompt(false)} className="opacity-40 hover:opacity-100">
+                <EyeOff className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="prose prose-invert prose-sm font-eb-garamond opacity-70 leading-relaxed">
+              <Markdown>{SAGE_SYSTEM_PROMPT}</Markdown>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
-        {messages.map((msg, i) => (
-          <div key={i} className={cn("flex w-full", msg.role === 'user' ? "justify-end" : "justify-start")}>
-            <div className={cn(
-              "max-w-[85%] rounded-3xl p-6 text-[13px] leading-relaxed",
-              msg.role === 'user' 
-                ? "neo-convex text-zinc-300" 
-                : "neo-flat text-zinc-400"
-            )}>
-              <div className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-[#111] prose-pre:border prose-pre:border-white/[0.02] font-sans">
-                <Markdown>{msg.text}</Markdown>
-              </div>
-            </div>
-          </div>
-        ))}
-        {isLoading && (
-          <div className="flex w-full justify-start">
-            <div className="max-w-[85%] neo-flat rounded-3xl p-6 flex items-center gap-3">
-              <Loader2 className="w-4 h-4 animate-spin text-orange-500/50" />
-              <span className="text-[11px] text-zinc-500 uppercase tracking-widest font-mono">Deconstructing...</span>
-            </div>
-          </div>
-        )}
-        <div ref={messagesEndRef} />
-      </div>
-
       {/* Input Area */}
-      <div className="p-8 pt-4 neo-bg">
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center justify-between px-2">
-            <span className="text-[9px] uppercase tracking-widest text-zinc-600 font-mono">Enter to send • Shift+Enter for newline</span>
-            <div className="flex items-center gap-1.5 neo-flat-sm px-2.5 py-1 rounded-full">
-              <div className="w-1 h-1 bg-orange-500 rounded-full shadow-[0_0_5px_rgba(249,115,22,0.5)]"></div>
-              <span className="text-[8px] uppercase tracking-widest text-zinc-400 font-mono">Context: Nihiltheism Corpus</span>
+      <div className="px-6 py-6 border-t border-[#c8922a11] bg-[#0b0905] z-10">
+        <div className="relative group">
+          <textarea
+            ref={textareaRef}
+            value={input}
+            onChange={handleInput}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+              }
+            }}
+            placeholder="Inquire into the Void..."
+            className="w-full bg-[#1a160d] border border-[#c8922a22] rounded-xl px-5 py-4 pr-14 text-[#f0e6d2] placeholder-[#c8922a33] focus:outline-none focus:border-[#c8922a55] transition-all resize-none min-h-[60px] max-h-[200px] font-eb-garamond text-lg custom-scrollbar"
+          />
+          <button
+            onClick={sendMessage}
+            disabled={!input.trim() || isThinking}
+            className={`absolute right-3 bottom-3 p-2.5 rounded-lg transition-all ${
+              input.trim() && !isThinking
+                ? 'bg-[#c8922a] text-[#0b0905] hover:scale-105 active:scale-95 shadow-[0_0_15px_rgba(200,146,42,0.3)]'
+                : 'bg-[#c8922a11] text-[#c8922a33] cursor-not-allowed'
+            }`}
+          >
+            <Send className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="mt-3 flex items-center justify-between px-2">
+          <div className="flex items-center gap-4 opacity-30">
+            <div className="flex items-center gap-1.5">
+              <Terminal className="w-3 h-3" />
+              <span className="text-[10px] font-sono uppercase tracking-widest">Dialectical Mode</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <ShieldAlert className="w-3 h-3" />
+              <span className="text-[10px] font-sono uppercase tracking-widest">Apophatic Filter</span>
             </div>
           </div>
-          <div className="relative flex items-center">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-              placeholder="Query the void..."
-              className="w-full neo-pressed rounded-full py-4 pl-7 pr-16 text-[13px] text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-orange-500/30 transition-all font-sans"
-              disabled={isLoading}
-            />
-            <button
-              onClick={handleSend}
-              disabled={!input.trim() || isLoading}
-              className="absolute right-3 w-11 h-11 rounded-full flex items-center justify-center neo-convex text-zinc-500 hover:text-orange-400 disabled:opacity-50 disabled:hover:text-zinc-500 transition-all cursor-pointer"
-            >
-              <Send className="w-4 h-4" strokeWidth={1.5} />
-            </button>
-          </div>
+          <span className="text-[10px] font-sono uppercase tracking-widest opacity-20">
+            Shift + Enter for newline
+          </span>
         </div>
       </div>
     </div>
   );
-}
+};

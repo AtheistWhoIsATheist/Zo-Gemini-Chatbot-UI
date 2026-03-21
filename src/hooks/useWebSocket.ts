@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useSynthesisStore } from '../store/synthesisStore';
 import { WSMessage } from '../types/synthesis';
+import { streamChatResponse } from '../services/geminiService';
 
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null);
@@ -123,40 +124,45 @@ export function useWebSocket() {
     } else {
       console.warn('[WS] Cannot send message, not connected');
       // Fallback for demo purposes if no real WS server exists
-      simulateResponse();
+      simulateResponse(text);
     }
   };
 
-  const simulateResponse = () => {
+  const simulateResponse = async (text: string) => {
     setStreaming(true);
     setSynthesis('');
     
-    const mockResponse = "The void is ⊗ being and non-being simultaneously. [INFERRED] from Nāgārjuna's analysis. ∅ concept exists in the apophatic tradition. ~Perhaps this is the core insight~ [SPECULATIVE]";
-    let i = 0;
-    
-    const interval = setInterval(() => {
-      if (i < mockResponse.length) {
-        setSynthesis(useSynthesisStore.getState().synthesis + mockResponse[i]);
-        if (i % 10 === 0) {
+    try {
+      // Use the Sage's quick insight or a full response if we want to be thorough
+      // For a "simulation" that feels real, we can use the actual geminiService
+      // but without the WebSocket overhead.
+      const response = await streamChatResponse(
+        [], // No history for simple simulation
+        text,
+        false, // No thinking for speed in simulation
+        [], // No docs for simple simulation
+        (chunk) => {
+          setSynthesis(useSynthesisStore.getState().synthesis + chunk);
           // Fluctuating theta for demo
           const currentTheta = useSynthesisStore.getState().theta;
-          const newTheta = Math.max(0, Math.min(1, currentTheta + (Math.random() - 0.5) * 0.1));
+          const newTheta = Math.max(0, Math.min(1, currentTheta + (Math.random() - 0.5) * 0.05));
           setTheta(newTheta);
         }
-        i++;
-      } else {
-        clearInterval(interval);
-        setStreaming(false);
-        addMessage({
-          id: Date.now().toString(),
-          text: useSynthesisStore.getState().synthesis,
-          timestamp: Date.now(),
-          theta: useSynthesisStore.getState().theta,
-          markers: [],
-        });
-        setSynthesis('');
-      }
-    }, 50);
+      );
+
+      setStreaming(false);
+      addMessage({
+        id: Date.now().toString(),
+        text: response,
+        timestamp: Date.now(),
+        theta: useSynthesisStore.getState().theta,
+        markers: [],
+      });
+      setSynthesis('');
+    } catch (err) {
+      console.error('[WS-Sim] Failed to simulate Sage response:', err);
+      setStreaming(false);
+    }
   };
 
   return { sendMessage };
